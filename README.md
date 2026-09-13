@@ -1,4 +1,4 @@
-# L-Town
+# LINKTOWN
 
 A 3D multiplayer browser game rendered with Three.js.
 
