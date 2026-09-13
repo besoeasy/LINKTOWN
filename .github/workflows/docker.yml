@@ -41,7 +41,7 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=latest
-            type=raw,value={{date 'YYYYMMDD'}}
+            type=raw,value={{date 'YYYY.MM.DD'}}
 
       - name: Build and push Docker image
         id: build-and-push
