@@ -110,6 +110,7 @@ export class GameEngine {
   private lastFpsUpdate = performance.now()
   private lastFrameTime = performance.now()
   private vy = 0
+  private padBoostUntil = 0
   private lastShotTime = 0
   private lastHitTime = Date.now()
   private inputDisposers: Array<() => void> = []
@@ -1120,6 +1121,10 @@ export class GameEngine {
       if (this.localPlayer.character === 'berserker' && rageNow - this.localPlayer.lastAbilityAt < 8000) {
         speed *= 1.25
       }
+      // Jump-pad air boost: extra steering speed while airborne after a launch
+      if (rageNow < this.padBoostUntil && !this.isOnGround(this.localPlayer)) {
+        speed *= CFG.JUMP_PAD_MOMENTUM_BOOST
+      }
 
       if (len > 0) {
         mx = (mx / len) * speed * dt
@@ -1172,6 +1177,8 @@ export class GameEngine {
               this.setCrouching(false)
             }
             this.vy = CFG.JUMP_PAD_LAUNCH_VY
+            // Air-boost window covers the whole flight (up + down ≈ 2.7s)
+            this.padBoostUntil = now + 3000
             sound.playJumpPadLaunch()
             this.scene.triggerJumpPadEffect(pad.x, pad.y, pad.z)
 

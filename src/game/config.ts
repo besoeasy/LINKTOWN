@@ -27,8 +27,8 @@ export const CFG = {
   JUMP_PAD_WARNING_TIME: 5, // Warning flicker phase in seconds before despawn
   JUMP_PAD_RADIUS: 2.2,     // Step-on activation radius in world units
   JUMP_PAD_COOLDOWN_MS: 1200,// Anti-retrigger cooldown per entity (ms)
-  JUMP_PAD_LAUNCH_VY: 34,   // Vertical launch velocity (clears ~18u height)
-  JUMP_PAD_MOMENTUM_BOOST: 1.25, // Forward momentum boost multiplier
+  JUMP_PAD_LAUNCH_VY: 44,   // Vertical launch velocity (clears ~30u height)
+  JUMP_PAD_MOMENTUM_BOOST: 1.5, // Airborne speed multiplier after a pad launch
   JUMP_SPEED: 18,           // Base vertical jump velocity
   GRAVITY: 32,              // Gravity units/sec^2
   SUPER_JUMP_SPEED: 44,     // High jump velocity (~10x height)
