@@ -395,7 +395,7 @@ export class GameEngine {
   }
 
   /** Any hull expenditure (shots, super, shield, jumps) must pause the
-   *  7s-calm full-hull reconstruction, otherwise firing would refill
+   *  calm-window hull reconstruction, otherwise firing would refill
    *  instantly on the next tick. Keeps lastDamageAt (authoritative regen
    *  clock) and lastHitTime (legacy local fallback) in sync. */
   private markHullSpent(player: PlayerState, now: number = Date.now()) {
@@ -934,7 +934,7 @@ export class GameEngine {
         continue
       }
 
-      // Nanite Regeneration: after 7 seconds of calm (no damage taken,
+      // Nanite Regeneration: after 3 seconds of calm (no damage taken,
       // no hull spent), hull rebuilds gradually at REGEN_RATE per second.
       // Hull spends (shots/super/shield/jumps) also pause regen via markHullSpent,
       // so take the most recent of either clock (lastHitTime is the legacy local fallback).

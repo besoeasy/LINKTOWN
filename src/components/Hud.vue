@@ -110,7 +110,7 @@ const rPercent = computed(() => {
   return props.player.health >= 81 ? 100 : Math.max(0, (props.player.health / 80) * 100)
 })
 
-// Nanite Regeneration: 7s calm after damage/spend, then gradual rebuild
+// Nanite Regeneration: 3s calm after damage/spend, then gradual rebuild
 const regenCooldownRemaining = computed(() => {
   if (props.player.health >= CFG.MAX_HEALTH) return 0
   const lastDmg = props.player.lastDamageAt || 0
@@ -397,7 +397,7 @@ const cPercent = computed(() => {
             <div class="action-info">
               <span class="action-name">CROUCH</span>
               <span class="action-status">
-                {{ cTimeRemaining > 0 ? `${cTimeRemaining.toFixed(1)}s (7s CALM)` : 'FULL HULL' }}
+                {{ cTimeRemaining > 0 ? `${cTimeRemaining.toFixed(1)}s (3s CALM)` : 'FULL HULL' }}
               </span>
             </div>
           </div>

@@ -42,7 +42,7 @@
   - Super mode overclocks the chassis, multiplying damage by 3x at a cost of **50 Hull**.
   - Shield covers the chassis in a nanite layer absorbing 100% damage for 10s at a cost of **80 Hull**.
   - Super Jump burns crowds of nanites for massive vertical lift (height ~10x regular jump) at a cost of **20 Hull**.
-  - Hull rebuilds gradually: **7 seconds of calm** (no damage taken, no hull spent on shots/abilities), then **1 hull per second** — **3x faster while crouching**. Any spend or hit restarts the clock.
+  - Hull rebuilds gradually: **3 seconds of calm** (no damage taken, no hull spent on shots/abilities), then **1 hull per second** — **3x faster while crouching**. Any spend or hit restarts the clock.
 * **Match Format**: 10-minute trials (600 seconds), 16 players per room, 750×750 arena generated from a daily or room seed, leaderboard tracking top 5 pilots, and kill-leader HVT computed each tick.
 
 ### 3.2 The 11 Atma Cores (`CoreId`)
@@ -67,7 +67,7 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
 - `MATCH_DURATION`: 600s
 - `MAX_PLAYERS`: 16 (P2P WebRTC room limit)
 - `MAX_HEALTH`: 500 Hull
-- `REGEN_DELAY`: 7000ms of calm (no damage taken, no hull spent) before gradual rebuild starts
+- `REGEN_DELAY`: 3000ms of calm (no damage taken, no hull spent) before gradual rebuild starts
 - `REGEN_RATE`: 1 hull per second once the calm period completes (3x while crouching)
 - `PLAYER_SPEED`: 9 units/s (Run: 15 units/s, Crouch: 0 units/s — crouch is a stationary lock, any WASD stands back up)
 - `PLAYER_RADIUS`: 0.45, `PLAYER_HEIGHT`: 2.3, `EYE_HEIGHT`: 1.95, `CROUCH_EYE_HEIGHT`: 0.85
