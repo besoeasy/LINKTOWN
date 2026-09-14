@@ -18,7 +18,7 @@ export interface PublicRoom {
 const BROKER_URL = 'wss://broker.emqx.io:8084/mqtt'
 const TOPIC_PREFIX = 'ltown/rooms/'
 const HEARTBEAT_MS = 15000
-const EXPIRE_MS = 45000
+const EXPIRE_MS = 5 * 60 * 1000 // purge listings older than 5 minutes
 const CONNECT_TIMEOUT_MS = 8000
 
 function topicFor(code: string): string {
