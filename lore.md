@@ -9,7 +9,7 @@
 - One chassis for everything: army, miner, researcher. Same hull, same speed, same wiring.
 - An inert nanote shell. A core gives it life. Each core is a perfect pyramid suspended in nanite fluid — a floating heart. Insert it, and the shell takes the core's form and identity.
 - No variants, no upgrades — fixed by arena charter so only cores compete.
-- Hull = nanite count: fuel, function, and mass at once. Fire, jumps, and shields spend nanites. The core fabricates new nanites when the robot stands still; crouched is fastest. Reclaimed swarms reprint at dawn. Rush reprints boot at 75% hull.
+- Hull = nanite count: fuel, function, and mass at once. Fire, jumps, and shields spend nanites. Survive 7 seconds of calm — no hits taken, no nanites spent — and the core reconstructs the shell to full hull in an instant. Any spend or wound restarts the clock. Destroyed swarms reprint whole after a 7-second reprint delay.
 - Destroyed swarms eject a nanite cache (+100 hull) that nearby shells can siphon — salvage.
 
 ## The Atma Cores
@@ -35,9 +35,9 @@ Fizzle rule: no valid target means the glitch fires empty — full cooldown, no 
 A decommissioned Meridian transit hub kept as a battleground — the soil where the first shell was ever printed and linked from orbit. Nobody lives there; only shells and drones touch the ground. Meridian hosts neutrally: keeps the printers, refs the matches, fields no core.
 
 - One map per day — everyone fights the same town; the arena regenerates each dawn.
-- 10-minute trials, dawn to dusk, instant requeue. Highest score wins; latest kill breaks ties.
+- 10-minute trials, dawn to dusk, instant requeue. Highest score wins.
 - Makers prove their cores here; winning pilots sign with their core as a package. Army clearance pays the most.
-- Drones track every unit for the live leaderboard; the leader runs in a visible halo — frags are frags, no bounty. Grounders may die but the show is a job interview: combat is the resume.
+- Drones track every unit for the live leaderboard; frags are frags, no bounty. Grounders may die but the show is a job interview: combat is the resume.
 
 ## Operators
 

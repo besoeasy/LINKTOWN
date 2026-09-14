@@ -46,8 +46,8 @@
   - Super mode overclocks the chassis, multiplying damage by 3x at a cost of **50 Hull**.
   - Shield covers the chassis in a nanite layer absorbing 100% damage for 10s at a cost of **80 Hull**.
   - Super Jump burns crowds of nanites for massive vertical lift (height ~10x regular jump) at a cost of **20 Hull**.
-  - Idle/crouch regenerates hull slowly after a 2-second calm period (**3x faster while crouching**).
-* **Match Format**: 10-minute trials (600 seconds), 16 players per room, 750×750 arena generated from a daily or room seed, leaderboard tracking top 3 pilots, and dynamic High Value Target (HVT) tracking.
+  - Nanite reconstruction is instant and full: **7 seconds of calm** (no damage taken, no hull spent on shots/abilities) restores hull to max. Any spend or hit restarts the clock.
+* **Match Format**: 10-minute trials (600 seconds), 16 players per room, 750×750 arena generated from a daily or room seed, leaderboard tracking top 5 pilots, and kill-leader HVT computed each tick.
 
 ### 3.2 The 11 Atma Cores (`CoreId`)
 Each chassis is powered by an Atma Core holding a copied mind-pattern. The core glitch gives its unique **Q Ability**:
@@ -71,9 +71,9 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
 - `MATCH_DURATION`: 600s
 - `MAX_PLAYERS`: 16 (P2P WebRTC room limit)
 - `MAX_HEALTH`: 500 Hull
-- `REGEN_DELAY`: 2000ms
-- `REGEN_RATE`: 2 nanites/s base (6 nanites/s while crouching)
-- `PLAYER_SPEED`: 9 units/s (Run: 15 units/s, Crouch: 4 units/s)
+- `REGEN_DELAY`: 7000ms of calm (no damage taken, no hull spent) before instant full-hull reconstruction
+- `REGEN_RATE`: 500 — refill is instant to `MAX_HEALTH`, not gradual
+- `PLAYER_SPEED`: 9 units/s (Run: 15 units/s, Crouch: 0 units/s — crouch is a stationary lock, any WASD stands back up)
 - `PLAYER_RADIUS`: 0.45, `PLAYER_HEIGHT`: 2.3, `EYE_HEIGHT`: 1.95, `CROUCH_EYE_HEIGHT`: 0.85
 - `JUMP_SPEED`: 18 units/s, `GRAVITY`: 32 units/s²
 - `SUPER_JUMP_SPEED`: 44 units/s, `SUPER_JUMP_COST`: 20 Hull
@@ -87,9 +87,8 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
   - First-person HUD: Hexagonal energy barrier grid, glowing cyan corner brackets, pulsing immunity timer banner, and deep vignette glow.
   - 3D Arena: Multi-layer forcefield bubble with rotating outer geodesic wireframe, inner emissive glow sphere, and equatorial energy ring.
 - `TRIAL_COMPLETION_SCREEN`: When the 10-minute trial clock expires (or match ends), authoritative standings calculate the Apex Operative champion, final rank, frag counts, and display the full final leaderboard modal with "PLAY AGAIN / NEW TRIAL" and "RETURN TO LOBBY" actions.
-- `RECONNECT_GRACE_MS`: 15000ms
 
-### 3.4 750×750 Procedural Arena (`map_pure.ts`)
+### 3.4 750×750 Procedural Arena (`src/game/map.ts`)
 - Pure, deterministic procedural map generation driven by PRNG seed (no Three.js dependency in core generator).
 - Includes outer perimeter walls (`wH=12`, `SIZE=750`), 5-story central Meridian office/hub with windows and platforms, hideouts, multi-tiered cover, elevated platforms, pillars, lamps, bollards, and 40+ spawn points.
 - Spatial Grid index (`BOX_CELL = 20`) for collision checks and raycasting.
