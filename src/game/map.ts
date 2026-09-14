@@ -33,8 +33,8 @@ function hash01(seed: number, i: number): number {
 
 /**
  * Rolling terrain height. Dead flat inside the central arena (r < 115, where
- * all handcrafted structures, roads and ponds sit), ramping up to gentle
- * hills (max ~3.2u, slopes ~0.06) across the outer scatter zone.
+ * all handcrafted structures, roads and ponds sit), ramping up to varied
+ * hills and ridges (max ~6u, slopes ~0.08) across the outer scatter zone.
  * Pure function of world (x, z) + seed — shared by mesh, physics and spawns.
  */
 export function groundHeight(x: number, z: number, seed: number): number {
@@ -45,9 +45,12 @@ export function groundHeight(x: number, z: number, seed: number): number {
   const p1 = hash01(seed, 1) * Math.PI * 2
   const p2 = hash01(seed, 2) * Math.PI * 2
   const p3 = hash01(seed, 3) * Math.PI * 2
+  const p4 = hash01(seed, 4) * Math.PI * 2
   const h =
-    Math.sin(x * 0.018 + p1) * Math.cos(z * 0.021 + p2) * 2.0 +
-    Math.sin((x + z) * 0.009 + p3) * 1.2
+    Math.sin(x * 0.018 + p1) * Math.cos(z * 0.021 + p2) * 3.2 +
+    Math.sin((x + z) * 0.009 + p3) * 2.0 +
+    Math.sin(x * 0.045 + p2) * Math.cos(z * 0.05 + p1) * 0.9 +
+    Math.sin((x - z) * 0.03 + p4) * 0.8
   return h * s
 }
 
