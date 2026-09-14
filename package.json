@@ -9,7 +9,6 @@
     "preview": "vite preview --port 30300 --host 0.0.0.0"
   },
   "dependencies": {
-    "nostr-tools": "^2.7.2",
     "peerjs": "^1.5.5",
     "qrcode": "^1.5.4",
     "three": "^0.179.1",

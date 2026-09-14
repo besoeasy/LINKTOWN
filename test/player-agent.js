@@ -5,6 +5,7 @@ const mode = process.argv[2] || 'host';
 const callsign = process.argv[3] || 'Pilot-Alpha';
 const targetUrl = process.argv[4] || 'http://localhost:30300';
 const agentPort = Number(process.argv[5] || 9001);
+const roomCodeArg = process.argv[6] || '';
 
 console.log(`[Agent ${callsign}] Starting in mode: ${mode}, target: ${targetUrl}, port: ${agentPort}`);
 
@@ -200,36 +201,30 @@ async function run() {
   }, callsign);
 
   if (mode === 'host') {
-    console.log(`[${callsign}] Initiating Nostr Room Host...`);
+    console.log(`[${callsign}] Creating PeerJS room...`);
     await page.evaluate(async () => {
-      await window.__createNostrRoom();
+      await window.__createPeerRoom();
     });
 
     await page.waitForFunction(() => {
       const state = window.__getGameState ? window.__getGameState() : null;
-      return state && state.p2pStatus === 'HOSTING';
+      return state && state.roomCode && state.p2pStatus && state.p2pStatus.startsWith('HOSTING');
     }, { timeout: 35000 });
     agentReady = true;
-    console.log(`[${callsign}] Hosting started successfully!`);
+    const hosted = await page.evaluate(() => window.__getGameState());
+    console.log(`[${callsign}] Hosting peer room ${hosted.roomCode} successfully!`);
   } else {
-    console.log(`[${callsign}] Waiting for Nostr room discovery...`);
-    await page.waitForFunction(() => {
-      const state = window.__getGameState ? window.__getGameState() : null;
-      return state && state.nostrRooms && state.nostrRooms.length > 0;
-    }, { timeout: 35000 });
-
-    const rooms = await page.evaluate(() => window.__getGameState().nostrRooms);
-    console.log(`[${callsign}] Discovered ${rooms.length} room(s) via Nostr:`, rooms[0].name, 'pubkey:', rooms[0].pubkey);
-
-    console.log(`[${callsign}] Joining Nostr room ${rooms[0].id}...`);
-    await page.evaluate(async (room) => {
-      await window.__joinNostrRoom(room);
-    }, rooms[0]);
+    const code = roomCodeArg || new URL(targetUrl).searchParams.get('room') || '';
+    if (!code) throw new Error('join mode requires a room code (argv[6])');
+    console.log(`[${callsign}] Joining peer room ${code}...`);
+    await page.evaluate(async (c) => {
+      await window.__joinPeerRoom(c);
+    }, code);
 
     console.log(`[${callsign}] Waiting for P2P connection to Host...`);
     await page.waitForFunction(() => {
       const state = window.__getGameState ? window.__getGameState() : null;
-      return state && state.p2pStatus === 'P2P LINKED';
+      return state && state.p2pStatus && state.p2pStatus.startsWith('P2P LINKED');
     }, { timeout: 35000 });
     agentReady = true;
     console.log(`[${callsign}] P2P LINKED successfully!`);

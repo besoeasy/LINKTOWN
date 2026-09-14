@@ -256,15 +256,3 @@ export interface MatchResults {
   isWinner: boolean
   leaderboard: { id: number; name: string; score: number; isBot?: boolean; ping?: number }[]
 }
-
-export interface NostrRoom {
-  id: string
-  name: string
-  seed: number
-  core: CoreId
-  players: number
-  maxPlayers: number
-  createdAt: number
-  pubkey: string
-  relay?: string
-}

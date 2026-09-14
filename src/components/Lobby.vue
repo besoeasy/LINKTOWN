@@ -1,13 +1,10 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { CORE_DETAILS, CORE_IDS, type CoreId } from '../game/config'
-import type { NostrRoom } from '../net/types'
 
 const props = defineProps<{
   callsign: string
   selectedCore: CoreId
-  rooms: NostrRoom[]
-  isPublishing: boolean
   inviteRoomCode?: string
   isConnecting?: boolean
 }>()
@@ -18,12 +15,9 @@ const emit = defineEmits<{
   (e: 'startSolo'): void
   (e: 'createPeerRoom'): void
   (e: 'joinPeerRoom', code: string): void
-  (e: 'createNostrRoom'): void
-  (e: 'joinNostrRoom', room: NostrRoom): void
-  (e: 'refreshRooms'): void
 }>()
 
-const activeTab = ref<'cores' | 'rooms' | 'controls'>('cores')
+const activeTab = ref<'cores' | 'controls'>('cores')
 const roomCodeInput = ref('')
 
 const handleJoinInput = () => {
@@ -66,9 +60,6 @@ const handleJoinInput = () => {
         <button :class="{ active: activeTab === 'cores' }" @click="activeTab = 'cores'">
           Cores
         </button>
-        <button :class="{ active: activeTab === 'rooms' }" @click="activeTab = 'rooms'">
-          Rooms ({{ rooms.length }})
-        </button>
         <button :class="{ active: activeTab === 'controls' }" @click="activeTab = 'controls'">
           Controls
         </button>
@@ -93,25 +84,6 @@ const handleJoinInput = () => {
             <span class="core-maker">{{ CORE_DETAILS[cid].maker }} — {{ CORE_DETAILS[cid].ability }}</span>
             <span class="core-desc">{{ CORE_DETAILS[cid].desc }}</span>
           </button>
-        </div>
-
-        <div v-else-if="activeTab === 'rooms'" class="rooms">
-          <div class="rooms-head">
-            <span>Public rooms on NOSTR relays</span>
-            <button class="ghost" @click="emit('refreshRooms')">Refresh</button>
-          </div>
-
-          <p v-if="rooms.length === 0" class="empty">
-            No active rooms. Create one below, or launch a solo trial.
-          </p>
-
-          <div v-else class="room-list">
-            <div v-for="r in rooms" :key="r.id" class="room-row">
-              <span class="room-name">{{ r.name }}</span>
-              <span class="room-meta">{{ r.core }} · {{ r.players }} / 16</span>
-              <button class="ghost" @click="emit('joinNostrRoom', r)">Join</button>
-            </div>
-          </div>
         </div>
 
         <div v-else class="controls">
@@ -343,47 +315,6 @@ const handleJoinInput = () => {
   font-size: 13px;
   line-height: 1.4;
   color: #8a90a0;
-}
-
-.rooms-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  font-size: 14px;
-  color: #8a90a0;
-}
-
-.empty {
-  color: #8a90a0;
-  font-size: 14px;
-  padding: 32px 0;
-}
-
-.room-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.room-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 2px;
-  border-bottom: 1px solid #1c212c;
-  font-size: 14px;
-}
-
-.room-name {
-  font-weight: 700;
-}
-
-.room-meta {
-  color: #8a90a0;
-}
-
-.room-row button {
-  margin-left: auto;
 }
 
 .controls {

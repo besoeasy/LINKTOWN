@@ -2,7 +2,7 @@
 set -euo pipefail
 
 echo "========================================================================"
-echo "           L-TOWN 3-CONTAINER NOSTR MULTIPLAYER TEST                    "
+echo "           L-TOWN 3-CONTAINER PEERJS MULTIPLAYER TEST                    "
 echo "========================================================================"
 
 WORKSPACE="/home/jesus/project/besoeasy/l-town"
@@ -17,7 +17,7 @@ if ! podman network exists ltown-net 2>/dev/null; then
   podman network create ltown-net
 fi
 
-echo "[3/7] Launching Container 1 (Host: Pilot-Alpha + Nostr Relay Server)..."
+echo "[3/7] Launching Container 1 (Host: Pilot-Alpha)..."
 podman run -d --name ltown-player1 --network ltown-net \
   -p 30300:30300 -p 9001:9001 \
   -v "$WORKSPACE/test:/app/test:Z" \
@@ -33,12 +33,12 @@ echo "   Server online: $SERVER_INFO"
 echo "   Starting Pilot-Alpha browser agent in Container 1..."
 podman exec -d ltown-player1 bash -c "node test/player-agent.js host Pilot-Alpha http://localhost:30300 9001 > /app/test/agent1.log 2>&1"
 
-echo "   Waiting for Pilot-Alpha to publish Nostr room..."
+echo "   Waiting for Pilot-Alpha to open a peer room..."
 ALPHA_READY=false
 for i in $(seq 1 40); do
   READY=$(curl -s http://localhost:9001/health | jq -r .agentReady 2>/dev/null || true)
   if [ "$READY" = "true" ]; then
-    echo "   -> Pilot-Alpha is HOSTING on Nostr! (took ${i}s)"
+    echo "   -> Pilot-Alpha is HOSTING! (took ${i}s)"
     ALPHA_READY=true
     break
   fi
@@ -52,15 +52,11 @@ if [ "$ALPHA_READY" != "true" ]; then
 fi
 
 HOST_STATE=$(curl -s http://localhost:9001/state)
-ROOM_ID=$(echo "$HOST_STATE" | jq -r '.nostrRooms[0].id')
+ROOM_CODE=$(echo "$HOST_STATE" | jq -r '.roomCode')
 ROOM_SEED=$(echo "$HOST_STATE" | jq -r '.seed')
-ROOM_NAME=$(echo "$HOST_STATE" | jq -r '.nostrRooms[0].name')
-HOST_PUBKEY=$(echo "$HOST_STATE" | jq -r '.nostrRooms[0].pubkey')
-echo "   Nostr Room Published:"
-echo "     Room ID: $ROOM_ID"
-echo "     Seed:    $ROOM_SEED"
-echo "     Name:    $ROOM_NAME"
-echo "     Pubkey:  $HOST_PUBKEY"
+echo "   Peer Room Open:"
+echo "     Room Code: $ROOM_CODE"
+echo "     Seed:      $ROOM_SEED"
 
 echo "[4/7] Launching Container 2 (Client 1: Pilot-Bravo)..."
 podman run -d --name ltown-player2 --network ltown-net \
@@ -69,9 +65,9 @@ podman run -d --name ltown-player2 --network ltown-net \
   ltown-test:latest sleep 3600
 
 echo "   Starting Pilot-Bravo browser agent in Container 2..."
-podman exec -d ltown-player2 bash -c "node test/player-agent.js join Pilot-Bravo http://ltown-player1:30300 9002 > /app/test/agent2.log 2>&1"
+podman exec -d ltown-player2 bash -c "node test/player-agent.js join Pilot-Bravo http://ltown-player1:30300 9002 $ROOM_CODE > /app/test/agent2.log 2>&1"
 
-echo "   Waiting for Pilot-Bravo to discover room & link via Nostr/WebRTC..."
+echo "   Waiting for Pilot-Bravo to join room & link via PeerJS..."
 BRAVO_READY=false
 for i in $(seq 1 40); do
   READY=$(curl -s http://localhost:9002/health | jq -r .agentReady 2>/dev/null || true)
@@ -98,9 +94,9 @@ podman run -d --name ltown-player3 --network ltown-net \
   ltown-test:latest sleep 3600
 
 echo "   Starting Pilot-Charlie browser agent in Container 3..."
-podman exec -d ltown-player3 bash -c "node test/player-agent.js join Pilot-Charlie http://ltown-player1:30300 9003 > /app/test/agent3.log 2>&1"
+podman exec -d ltown-player3 bash -c "node test/player-agent.js join Pilot-Charlie http://ltown-player1:30300 9003 $ROOM_CODE > /app/test/agent3.log 2>&1"
 
-echo "   Waiting for Pilot-Charlie to discover room & link via Nostr/WebRTC..."
+echo "   Waiting for Pilot-Charlie to join room & link via PeerJS..."
 CHARLIE_READY=false
 for i in $(seq 1 40); do
   READY=$(curl -s http://localhost:9003/health | jq -r .agentReady 2>/dev/null || true)
@@ -185,10 +181,8 @@ else
   echo "   -> FAIL: Seed mismatch!"
 fi
 
-echo "2. Nostr Room Discovery Check:"
-echo "   -> Discovered Room ID: $ROOM_ID"
-echo "   -> Discovered Room Name: $ROOM_NAME"
-echo "   -> Host Pubkey: $HOST_PUBKEY"
+echo "2. Room Code Handoff Check:"
+echo "   -> Room Code: $ROOM_CODE"
 
 P1_REMOTE_COUNT=$(echo "$STATE1" | jq '.remotePlayers | length')
 P2_REMOTE_COUNT=$(echo "$STATE2" | jq '.remotePlayers | length')

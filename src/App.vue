@@ -4,8 +4,7 @@ import type { CoreId } from './game/config'
 import { getDailySeed } from './game/prng'
 import { SceneRenderer } from './game/scene'
 import { GameEngine } from './game/engine'
-import type { PlayerState, KillMsg, HitConfirmMsg, NostrRoom, TelemetryData, MatchResults } from './net/types'
-import { publishRoom, subscribeRooms, sendSignalingMessage, subscribeSignaling, myPubkey } from './net/nostr'
+import type { PlayerState, KillMsg, HitConfirmMsg, TelemetryData, MatchResults } from './net/types'
 import { P2PHost, P2PClient } from './net/webrtc'
 import { generateRoomCode, PeerJSHost, PeerJSClient } from './net/peer'
 import { encodeSignal, decodeSignal } from './net/qr'
@@ -54,11 +53,6 @@ const telemetry = ref<TelemetryData>({
 })
 let currentMatchMode: 'solo' | 'host' | 'client' = 'solo'
 
-// NOSTR Rooms State
-const nostrRooms = ref<NostrRoom[]>([])
-const isPublishingRoom = ref(false)
-let nostrSubClose: (() => void) | null = null
-
 // QR / LAN Modal State
 const qrModal = ref({
   show: false,
@@ -96,13 +90,6 @@ onMounted(() => {
       inviteRoomCode.value = code.trim().toUpperCase()
     }
   }
-
-  // Subscribe to NOSTR rooms
-  nostrSubClose = subscribeRooms((room) => {
-    if (!nostrRooms.value.some(r => r.id === room.id)) {
-      nostrRooms.value.push(room)
-    }
-  })
 
   // Expose test and telemetry hooks on window for multi-container verification
   if (typeof window !== 'undefined') {
@@ -153,20 +140,11 @@ onMounted(() => {
           alive: p.alive,
           isBot: p.isBot
         })) : [],
-        remoteMeshesCount: (sceneRenderer as any)?.playerMeshes?.size || 0,
-        nostrRooms: nostrRooms.value.map(r => ({
-          id: r.id,
-          name: r.name,
-          seed: r.seed,
-          core: r.core,
-          pubkey: r.pubkey
-        }))
+        remoteMeshesCount: (sceneRenderer as any)?.playerMeshes?.size || 0
       }
     }
     ;(window as any).__createPeerRoom = createPeerRoom
     ;(window as any).__joinPeerRoom = joinPeerRoom
-    ;(window as any).__createNostrRoom = createNostrRoom
-    ;(window as any).__joinNostrRoom = joinNostrRoom
     ;(window as any).__startSolo = startSolo
     ;(window as any).__setCallsign = (name: string) => { callsign.value = name }
     ;(window as any).__engine = () => engine
@@ -181,7 +159,6 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKey)
   window.removeEventListener('keyup', handleGlobalKeyUp)
-  nostrSubClose?.()
   engine?.destroy()
 })
 
@@ -359,152 +336,7 @@ const startSolo = () => {
   initEngine(seed, 'solo')
 }
 
-// crypto.randomUUID needs a secure context (missing on plain-HTTP LAN play)
-function makeRoomId(): string {
-  const c = globalThis.crypto as Crypto | undefined
-  if (c?.randomUUID) return c.randomUUID().slice(0, 8)
-  if (c?.getRandomValues) {
-    return [...c.getRandomValues(new Uint8Array(4))]
-      .map(x => x.toString(16).padStart(2, '0'))
-      .join('')
-  }
-  return Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0')
-}
-
-// 2. Host NOSTR Match
-const createNostrRoom = async () => {
-  if (engine?.isRunning) return // already in a match (double-create guard)
-  isPublishingRoom.value = true
-  const roomId = makeRoomId()
-  const seed = getDailySeed()
-
-  const room: NostrRoom = {
-    id: roomId,
-    name: `${callsign.value}'s Trial`,
-    seed,
-    core: selectedCore.value,
-    players: 1,
-    maxPlayers: 16,
-    createdAt: Date.now(),
-    pubkey: myPubkey
-  }
-
-  p2pHost = new P2PHost(
-    (msg, fromId) => engine?.handleNetworkMessage(msg, fromId),
-    (peer) => {
-      console.log('Peer joined trial:', peer.id)
-      p2pStatus.value = `P2P LINKED (${p2pHost?.peers.size || 0})`
-      engine?.onPeerConnected(peer.id)
-    },
-    (id) => {
-      console.log('Peer left trial:', id)
-      engine?.onPeerDisconnected(id)
-    },
-    (state) => {
-      if (state === 'failed') p2pStatus.value = 'P2P FAILED (NAT?)'
-    }
-  )
-
-  p2pHost.setSeed(seed)
-
-  // Listen for NOSTR signaling DMs (offers + trickled ICE)
-  subscribeSignaling(async (data, fromPubkey) => {
-    if (data.type === 'offer' && data.offer) {
-      if (p2pHost!.replaceStalePeer(fromPubkey)) return // live peer already
-      const pid = await p2pHost!.handleIncomingOffer(
-        data.offer,
-        async (answer, assignedPlayerId) => {
-          await sendSignalingMessage(fromPubkey, { type: 'answer', answer, playerId: assignedPlayerId })
-        },
-        async (candidate) => {
-          await sendSignalingMessage(fromPubkey, { type: 'ice_candidate', candidate })
-        },
-        undefined,
-        fromPubkey
-      )
-    } else if (data.type === 'ice_candidate' && data.candidate) {
-      p2pHost!.addIceCandidateByPubkey(fromPubkey, data.candidate)
-    }
-  })
-
-  // Launch match immediately for host (no blocking on remote relay network)
-  initEngine(seed, 'host')
-  p2pStatus.value = 'HOSTING'
-  engine?.setHostNetwork(p2pHost)
-
-  // Publish room to NOSTR relays in background
-  publishRoom(room).finally(() => {
-    isPublishingRoom.value = false
-  })
-}
-
-// 3. Join NOSTR Room
-const joinNostrRoom = async (room: NostrRoom) => {
-  if (engine?.isRunning) return // already in a match (double-join guard)
-  let appliedAnswer = false
-  let offerTries = 0
-  let retryTimer: any = null
-  const stopLinking = () => {
-    if (retryTimer) clearInterval(retryTimer)
-    retryTimer = null
-    unsub()
-  }
-  p2pClient = new P2PClient(
-    (msg) => engine?.handleNetworkMessage(msg),
-    () => {
-      console.log('Connected to P2P Host')
-      p2pStatus.value = 'P2P LINKED'
-      stopLinking()
-    },
-    () => {
-      console.log('Disconnected from P2P Host')
-      p2pStatus.value = 'P2P LOST'
-    },
-    (state) => {
-      if (state === 'failed') {
-        p2pStatus.value = 'P2P FAILED (NAT?)'
-        stopLinking()
-      }
-    }
-  )
-
-  // Listen for answer + trickled ICE from host (stays open until linked)
-  const unsub = subscribeSignaling(async (data) => {
-    if (data.type === 'answer' && data.answer && !appliedAnswer) {
-      appliedAnswer = true
-      try {
-        await p2pClient!.handleAnswer(data.answer)
-      } catch (e) {
-        console.warn('Failed to apply host answer:', e)
-      }
-    } else if (data.type === 'ice_candidate' && data.candidate) {
-      p2pClient!.addIceCandidate(data.candidate)
-    }
-  })
-
-  // Create offer and send to host; resend until linked (heals lost signaling)
-  const sendOffer = async (offer: any) => {
-    await sendSignalingMessage(room.pubkey, { type: 'offer', offer })
-  }
-  await p2pClient.createOffer(sendOffer, async (candidate) => {
-    await sendSignalingMessage(room.pubkey, { type: 'ice_candidate', candidate })
-  })
-  retryTimer = setInterval(async () => {
-    if (p2pClient!.isConnected || appliedAnswer || offerTries++ >= 6) {
-      if (!p2pClient!.isConnected && !appliedAnswer) p2pStatus.value = 'P2P UNREACHABLE'
-      if (p2pClient!.isConnected) stopLinking()
-      return
-    }
-    const current = p2pClient!.pc?.localDescription
-    if (current) await sendOffer(current)
-  }, 3000)
-
-  initEngine(room.seed || getDailySeed(), 'client')
-  p2pStatus.value = 'P2P LINKING…'
-  engine?.setClientNetwork(p2pClient)
-}
-
-// 4. Host LAN via simple Host Address
+// 2. Host LAN via simple Host Address
 const hostLan = async () => {
   const seed = getDailySeed()
   p2pHost = new P2PHost(
@@ -581,7 +413,7 @@ const startHostMatch = () => {
   engine?.setHostNetwork(p2pHost!)
 }
 
-// 5. Join LAN via Host Address
+// 3. Join LAN via Host Address
 const joinLan = () => {
   lanModal.value = {
     show: true,
@@ -675,16 +507,11 @@ const handleSignalSubmit = (val: string) => {
       v-if="inLobby"
       v-model:callsign="callsign"
       v-model:selectedCore="selectedCore"
-      :rooms="nostrRooms"
-      :is-publishing="isPublishingRoom"
       :invite-room-code="inviteRoomCode"
       :is-connecting="isConnecting"
       @start-solo="startSolo"
       @create-peer-room="createPeerRoom"
       @join-peer-room="joinPeerRoom"
-      @create-nostr-room="createNostrRoom"
-      @join-nostr-room="joinNostrRoom"
-      @refresh-rooms="() => {}"
     />
 
     <!-- In-Game HUD -->

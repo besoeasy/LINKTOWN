@@ -2,17 +2,13 @@
 
 ## 1. Project Overview & Vision
 
-**L-Town** is a browser-based, client-side only 3D multiplayer first-person shooter (FPS) and Progressive Web Application (PWA). Built from scratch using **Three.js**, **WebRTC**, and **NOSTR**, it requires zero central backend game servers. Players can open a URL, discover peers via decentralized NOSTR relays, and play directly over ultra-low-latency peer-to-peer data channels.
+**L-Town** is a browser-based, client-side only 3D multiplayer first-person shooter (FPS) and Progressive Web Application (PWA). Built from scratch using **Three.js** and **WebRTC**, it requires zero central backend game servers. Players open a URL, share a short room code or LAN address, and play directly over ultra-low-latency peer-to-peer data channels.
 
 ### Core Architecture Pillars
 1. **Client-Side Only**: No game server backend. All game state, physics, rendering, and networking run in the browser.
 2. **Three.js Browser PWA**: Fully responsive, hardware-accelerated 3D graphics, offline service worker caching, and installable as a desktop/mobile web app.
 3. **WebRTC P2P Multiplayer**: Up to 16 players per match using WebRTC `RTCDataChannel`. The room host (lobby creator) runs the authoritative tick and physics loop, broadcasting state deltas to peers.
-4. **NOSTR Discovery & Signaling**:
-   - Game discovery via public NOSTR relays (replaceable events, e.g. Kind 30303).
-   - Peer signaling (SDP offer/answer and ICE exchange) via NOSTR encrypted messages (NIP-04/NIP-44) or QR code / LAN fallback.
-   - Gameplay itself is 100% direct peer-to-peer (`RTCDataChannel`), keeping game latency independent of relays.
-5. **Offline & Solo Play**: Single-player trial mode against local bot swarms when offline or playing alone.
+4. **Offline & Solo Play**: Single-player trial mode against local bot swarms when offline or playing alone.
 
 ---
 
@@ -80,7 +76,7 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
 - `DMG_SINGLE`: 20 base damage (scaled by distance falloff, min 25% at 120 units)
 - `SUPER_MULT`: 3× damage multiplier AND 2× movement speed multiplier (10s duration, -50 Hull cost). While Super is active, Q (Atma Core ability) and R (Nanite Barrier shield) are disabled.
 - `HUD_INDICATORS`: Q, E, R, C buttons feature animated perimeter SVG and linear border lines indicating real-time seconds remaining or charge progress. When Super is active, Q and R display DISABLED (SUPER).
-- `LIVE_TELEMETRY`: Header telemetry cluster displays real-time smooth RTT Ping (ms), connected pilot count (including bot breakdown), rolling FPS counter, active network protocol (LAN P2P / NOSTR P2P / SOLO OFFLINE), and 20 Hz simulation rate.
+- `LIVE_TELEMETRY`: Header telemetry cluster displays real-time smooth RTT Ping (ms), connected pilot count (including bot breakdown), rolling FPS counter, active network protocol (LAN HOST / P2P PEER / SOLO), and 20 Hz simulation rate.
 - `VIEWMODEL_ROBOT_HAND`: First-person articulated cybernetic combat hand and forearm attached to camera space with glowing nanite conduits, palm blaster reactor core, procedural weapon sway, dynamic recoil, and muzzle flash. Conduits adaptively glow golden-amber during Super and cyan in standard mode.
 - `ENERGY_PROJECTILES`: Firing shoots high-velocity visible plasma energy packets with glowing dual-mesh core and outer sheath, illuminating trajectories across the arena and bursting into impact sparks upon obstacle or player contact. Bot firing also renders visible projectiles.
 - `KINETIC_DEFLECTOR_SHIELD`: Activating R displays an unmistakable blueish kinetic forcefield:
@@ -95,18 +91,20 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
 
 ---
 
-## 4. Networking Architecture (WebRTC + NOSTR)
+## 4. Networking Architecture (WebRTC via PeerJS Cloud / LAN broker)
 
 ```
-                       ┌───────────────────────────────┐
-                       │     NOSTR Relay Network       │
-                       │  (damus.io, nos.lol, primal)  │
-                       └───────┬───────────────▲───────┘
-            Discovery (Kind 30303)│               │ SDP Signaling (NIP-04/44)
-                               ▼               │
-    ┌──────────────────────────┴───────────────┴──────────────────────────┐
-    │                                                                     │
-    ▼                                                                     ▼
+                        ┌───────────────────────────────┐
+                        │  PeerJS Cloud broker / LAN    │
+                        │  WebSocket broker (signaling  │
+                        │  only — SDP + ICE exchange)   │
+                        └───────┬───────────────▲───────┘
+             Room code link     │               │ SDP offer/answer
+             (`#room=CODE`)     │               │ + trickled ICE
+                                ▼               │
+     ┌──────────────────────────┴───────────────┴──────────────────────────┐
+     │                                                                     │
+     ▼                                                                     ▼
 ┌─────────────────────────┐     Direct WebRTC DataChannel     ┌─────────────────────────┐
 │       Host Peer         │◄─────────────────────────────────►│       Client Peer       │
 │  - Authoritative 20Hz   │           (<1-30ms RTT)           │  - Client prediction    │
@@ -115,22 +113,21 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
 └─────────────────────────┘                                   └─────────────────────────┘
 ```
 
-1. **Lobby & Discovery**:
-   - Host generates a random room ID and publishes room info (name, seed, core, player count, host pubkey) to NOSTR relays.
-   - Clients subscribe to tag `#t: l-town` to list available rooms sorted by freshness and latency.
-2. **WebRTC P2P Signaling via NOSTR**:
-   - Joining peer sends SDP offer via encrypted direct message to Host pubkey.
-   - Host receives offer, sets remote description, generates SDP answer, and returns it via encrypted DM.
-   - ICE candidates exchanged until `RTCDataChannel` (`label: 'game'`) opens.
+1. **Lobby & Room Codes**:
+   - Host generates a 4-character room code and opens it on the PeerJS Cloud broker.
+   - The invite link (`#room=CODE`) is shareable; clients join by code — no accounts, no relays.
+2. **WebRTC Signaling (PeerJS or LAN broker)**:
+   - Joining peer opens a DataConnection to the host's `ltown3049-<CODE>` peer ID.
+   - Host assigns a player ID, allocates an authoritative spawn, and returns both in a `welcome` packet.
+   - ICE uses Google/Twilio STUN plus OpenRelay TURN fallback for symmetric NATs.
 3. **P2P Gameplay (`game` DataChannel)**:
-   - Client sends inputs (movement, aim yaw/pitch, actions) at 20–60Hz.
-   - Host runs authoritative simulation (sweep AABB collisions, raycasts, cooldowns, abilities, match timer).
-   - Host broadcasts snapshot/delta updates at 20Hz (`TICK_MS = 50`).
+   - Client sends inputs (movement, aim yaw/pitch, actions) at render rate.
+   - Host runs authoritative simulation (collisions, raycasts, cooldowns, abilities, match timer) with server-side rate limits, ability-cooldown enforcement, and per-packet movement clamps.
+   - Host broadcasts snapshot updates at 20Hz (`TICK_MS = 50`).
    - Periodic heartbeat ping/pong packets track live peer RTT latency.
-4. **Local LAN Mode (Simplified Host Address)**:
-   - Host clicks **"HOST LAN MATCH"**; local IP is detected (e.g. `192.168.1.50:30300`).
-   - Clients click **"JOIN LAN (PASTE ADDRESS)"** (pre-filled with `window.location.host` or custom IP).
-   - Local WebSocket broker transparently negotiates the WebRTC offer/answer in <50ms, connecting peers directly without copying manual tokens. An air-gapped QR mode remains available as fallback.
+4. **Local LAN Mode (Host Address)**:
+   - Host registers on the LAN WebSocket broker with the daily seed; clients connect by host address.
+   - The broker transparently negotiates the WebRTC offer/answer, connecting peers directly. An air-gapped QR/token mode remains available as fallback.
 
 ---
 
@@ -138,7 +135,7 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
 
 - **Language**: TypeScript (ES modules).
 - **3D Engine**: Three.js (`InstancedMesh`, `Sky`, `PerspectiveCamera`, custom procedural viewmodels, particle/spark physics).
-- **Networking**: WebRTC (`RTCDataChannel`), `nostr-tools`, embedded LAN WebSocket broker.
+- **Networking**: WebRTC (`RTCDataChannel`) via PeerJS Cloud, embedded LAN WebSocket broker for local signaling, QR/token air-gap fallback.
 - **Audio**: Web Audio API synthesized procedural combat audio.
 - **Bundler / Server**: Vite for development and client build; lightweight static server in production container.
 - **Container**: Podman / Docker (Node 22-Alpine image, port 30300).

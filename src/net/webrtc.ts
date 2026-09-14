@@ -42,7 +42,7 @@ export class P2PHost {
     this.onStateChange = onStateChange
   }
 
-  /** Remember which peer belongs to a signaling identity (Nostr pubkey). */
+  /** Remember which peer belongs to a signaling identity (e.g. LAN broker id). */
   bindPubkey(pubkey: string, playerId: number) {
     this.pubkeyToPeer.set(pubkey, playerId)
   }
