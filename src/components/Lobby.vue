@@ -37,7 +37,7 @@ const handleJoinInput = () => {
     <div class="lobby-inner">
       <header class="lobby-header">
         <div class="brand">
-          <h1>L-TOWN</h1>
+          <h1>LINKTOWN</h1>
           <span class="sub">3049 REMOTE AGE // ATMA CORES</span>
         </div>
         <div class="pilot">
