@@ -35,725 +35,503 @@ const handleJoinInput = () => {
 </script>
 
 <template>
-  <div class="lobby-backdrop">
-    <div class="lobby-container">
-      <!-- Header -->
+  <div class="lobby">
+    <div class="lobby-inner">
       <header class="lobby-header">
         <div class="brand">
           <h1>L-TOWN</h1>
-          <span class="sub-brand">3049 REMOTE AGE // ATMA CORES</span>
+          <span class="sub">3049 REMOTE AGE // ATMA CORES</span>
         </div>
-        <div class="version-tag">CLIENT-ONLY PWA // P2P WEBRTC</div>
-      </header>
-
-      <!-- Pilot Callsign Bar -->
-      <div class="callsign-bar">
-        <div class="input-group">
-          <label>OPERATOR CALLSIGN</label>
+        <div class="pilot">
+          <label for="callsign">OPERATOR CALLSIGN</label>
           <input
+            id="callsign"
             type="text"
             maxlength="18"
-            placeholder="Enter Callsign..."
+            placeholder="Enter callsign"
             :value="callsign"
             @input="emit('update:callsign', ($event.target as HTMLInputElement).value)"
-            class="callsign-input"
           />
         </div>
-        <div class="selected-core-summary">
-          <span class="badge">{{ CORE_DETAILS[selectedCore].badge }}</span>
-          <div class="core-text">
-            <span class="name">{{ CORE_DETAILS[selectedCore].name }}</span>
-            <span class="maker">{{ CORE_DETAILS[selectedCore].maker }}</span>
-          </div>
-        </div>
-      </div>
+      </header>
 
-      <!-- Direct Room Invitation Banner -->
-      <div v-if="inviteRoomCode" class="invite-banner">
-        <div class="invite-info">
-          <span class="invite-bolt">⚡</span>
-          <div class="invite-details">
-            <span class="invite-heading">INVITATION DETECTED</span>
-            <span class="invite-sub">Room Host Code: <strong>{{ inviteRoomCode }}</strong></span>
-          </div>
-        </div>
-        <button class="invite-join-btn" :disabled="isConnecting" @click="emit('joinPeerRoom', inviteRoomCode)">
-          {{ isConnecting ? 'CONNECTING P2P...' : 'CONNECT & PLAY NOW' }}
+      <div v-if="inviteRoomCode" class="invite">
+        <span>Room invite: <strong>{{ inviteRoomCode }}</strong></span>
+        <button :disabled="isConnecting" @click="emit('joinPeerRoom', inviteRoomCode)">
+          {{ isConnecting ? 'Connecting…' : 'Connect & play' }}
         </button>
       </div>
 
-      <!-- Navigation Tabs -->
-      <nav class="lobby-tabs">
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'cores' }"
-          @click="activeTab = 'cores'"
-        >
-          11 ATMA CORES
+      <nav class="tabs">
+        <button :class="{ active: activeTab === 'cores' }" @click="activeTab = 'cores'">
+          Cores
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'rooms' }"
-          @click="activeTab = 'rooms'"
-        >
-          NOSTR ROOMS ({{ rooms.length }})
+        <button :class="{ active: activeTab === 'rooms' }" @click="activeTab = 'rooms'">
+          Rooms ({{ rooms.length }})
         </button>
-        <button
-          class="tab-btn"
-          :class="{ active: activeTab === 'controls' }"
-          @click="activeTab = 'controls'"
-        >
-          CONTROLS & LORE
+        <button :class="{ active: activeTab === 'controls' }" @click="activeTab = 'controls'">
+          Controls
         </button>
       </nav>
 
-      <!-- Main Content Area -->
-      <div class="tab-content">
-        <!-- 11 Atma Cores Grid -->
+      <main class="content">
         <div v-if="activeTab === 'cores'" class="cores-grid">
-          <div
+          <button
             v-for="cid in CORE_IDS"
             :key="cid"
             class="core-card"
             :class="{ selected: selectedCore === cid }"
             @click="emit('update:selectedCore', cid)"
           >
-            <div class="card-header">
-              <span class="card-badge">{{ CORE_DETAILS[cid].badge }}</span>
-              <span class="card-name">{{ CORE_DETAILS[cid].name }}</span>
-            </div>
-            <div class="card-maker">{{ CORE_DETAILS[cid].maker }}</div>
-            <div class="card-ability">
-              <span class="key-tag">Q</span>
-              <span class="ability-name">{{ CORE_DETAILS[cid].ability }}</span>
-              <span class="cd-tag">
-                {{ CORE_DETAILS[cid].cooldown > 0 ? `${CORE_DETAILS[cid].cooldown / 1000}s` : 'PASSIVE' }}
+            <span class="core-top">
+              <span class="core-badge">{{ CORE_DETAILS[cid].badge }}</span>
+              <span class="core-name">{{ CORE_DETAILS[cid].name }}</span>
+              <span class="core-cd">
+                {{ CORE_DETAILS[cid].cooldown > 0 ? `${CORE_DETAILS[cid].cooldown / 1000}s` : 'Passive' }}
               </span>
-            </div>
-            <p class="card-desc">{{ CORE_DETAILS[cid].desc }}</p>
-          </div>
+            </span>
+            <span class="core-maker">{{ CORE_DETAILS[cid].maker }} — {{ CORE_DETAILS[cid].ability }}</span>
+            <span class="core-desc">{{ CORE_DETAILS[cid].desc }}</span>
+          </button>
         </div>
 
-        <!-- NOSTR Public Room Browser -->
-        <div v-else-if="activeTab === 'rooms'" class="rooms-panel">
-          <div class="rooms-toolbar">
-            <span class="toolbar-title">DECENTRALIZED RELAY ROOM DISCOVERY</span>
-            <button class="refresh-btn" @click="emit('refreshRooms')">REFRESH RELAYS</button>
+        <div v-else-if="activeTab === 'rooms'" class="rooms">
+          <div class="rooms-head">
+            <span>Public rooms on NOSTR relays</span>
+            <button class="ghost" @click="emit('refreshRooms')">Refresh</button>
           </div>
 
-          <div v-if="rooms.length === 0" class="empty-rooms">
-            <p>No active public rooms discovered on NOSTR relays.</p>
-            <p class="empty-sub">Create a room below to broadcast your P2P match, or launch a Solo Trial.</p>
-          </div>
+          <p v-if="rooms.length === 0" class="empty">
+            No active rooms. Create one below, or launch a solo trial.
+          </p>
 
           <div v-else class="room-list">
             <div v-for="r in rooms" :key="r.id" class="room-row">
-              <div class="room-info">
-                <span class="room-name">{{ r.name }}</span>
-                <span class="room-core">Core: {{ r.core }}</span>
-                <span class="room-players">{{ r.players }} / 16 PILOTS</span>
-              </div>
-              <button class="join-btn" @click="emit('joinNostrRoom', r)">CONNECT P2P</button>
+              <span class="room-name">{{ r.name }}</span>
+              <span class="room-meta">{{ r.core }} · {{ r.players }} / 16</span>
+              <button class="ghost" @click="emit('joinNostrRoom', r)">Join</button>
             </div>
           </div>
         </div>
 
-        <!-- Controls & Canon Lore -->
-        <div v-else class="controls-panel">
-          <div class="controls-grid">
-            <div class="control-box">
-              <h3>PILOT CONTROLS</h3>
-              <ul>
-                <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> — Move Nanite Chassis</li>
-                <li><kbd>MOUSE</kbd> — Aim Reticle & Head</li>
-                <li><kbd>L-CLICK</kbd> — Hitscan Discharge (-2 Hull)</li>
-                <li><kbd>Q</kbd> — Atma Core Ability</li>
-                <li><kbd>E</kbd> — Super Overclock (-50 Hull, 3× Damage)</li>
-                <li><kbd>R</kbd> — Nanite Barrier (-80 Hull, 10s Immunity)</li>
-                <li><kbd>SPACE</kbd> — Jump (Hold Shift for Super Jump)</li>
-                <li><kbd>C</kbd> — Crouch / Take Cover</li>
-                <li><kbd>TAB</kbd> / <kbd>F</kbd> — Meridian Leaderboard</li>
-              </ul>
-            </div>
-            <div class="control-box">
-              <h3>3049 CANON CHARTER</h3>
-              <p>
-                The RX-11 was created to explore other planets — as miners, as army, and as researchers. Humans remain in orbit and pilot expendable
-                <strong>RX-11</strong> humanoid nanite swarms.
-              </p>
-              <p>
-                <strong>Hull is Ammunition:</strong> Every shot, jump, shield, and ability drains nanites from your chassis. Surviving 7 seconds without taking damage triggers instant full-hull nanite reconstruction.
-              </p>
-              <p>
-                <strong>Fair Charter:</strong> All chassis share identical hitboxes, speeds, and costs. Only your Atma Core soul pattern determines your unique Q ability.
-              </p>
-            </div>
-          </div>
+        <div v-else class="controls">
+          <section>
+            <h2>Controls</h2>
+            <ul>
+              <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</li>
+              <li><kbd>Mouse</kbd> Aim</li>
+              <li><kbd>Click</kbd> Fire (−2 hull)</li>
+              <li><kbd>Q</kbd> Core ability</li>
+              <li><kbd>E</kbd> Super (−50 hull)</li>
+              <li><kbd>R</kbd> Shield (−80 hull)</li>
+              <li><kbd>Space</kbd> Jump (hold <kbd>Shift</kbd> for super jump)</li>
+              <li><kbd>C</kbd> Crouch</li>
+              <li><kbd>Tab</kbd> / <kbd>F</kbd> Scoreboard</li>
+            </ul>
+          </section>
+          <section>
+            <h2>Rules</h2>
+            <p>
+              Hull is ammunition: shots, jumps, shields and abilities spend it.
+              Survive 7 seconds of calm to reconstruct to full hull.
+            </p>
+            <p>
+              All chassis are identical. Only the Atma Core differs.
+              {{ CORE_DETAILS[selectedCore].name }} — {{ CORE_DETAILS[selectedCore].desc }}
+            </p>
+          </section>
         </div>
-      </div>
+      </main>
 
-      <!-- Unified P2P Action Footer -->
-      <footer class="lobby-footer">
-        <button class="action-btn solo-btn" @click="emit('startSolo')">
-          SOLO TRIAL (BOTS)
-        </button>
-
-        <button class="action-btn host-btn" :disabled="isConnecting" @click="emit('createPeerRoom')">
-          ⚡ HOST MATCH (P2P)
-        </button>
-
-        <div class="join-match-box">
+      <footer class="actions">
+        <button class="primary" @click="emit('startSolo')">Solo trial</button>
+        <button class="primary" :disabled="isConnecting" @click="emit('createPeerRoom')">Host match</button>
+        <span class="join">
           <input
-            type="text"
             v-model="roomCodeInput"
-            placeholder="ROOM CODE"
+            type="text"
+            placeholder="Room code"
             maxlength="8"
-            class="room-code-input"
             @keyup.enter="handleJoinInput"
           />
           <button
-            class="action-btn join-match-btn"
+            class="ghost"
             :disabled="!roomCodeInput.trim() || isConnecting"
             @click="handleJoinInput"
           >
-            {{ isConnecting ? 'CONNECTING...' : 'JOIN MATCH' }}
+            {{ isConnecting ? 'Joining…' : 'Join' }}
           </button>
-        </div>
+        </span>
       </footer>
     </div>
   </div>
 </template>
 
 <style scoped>
-.lobby-backdrop {
+.lobby {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at center, #101422 0%, #080a10 100%);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 20;
+  background: #0b0d12;
+  color: #e6e8ee;
   font-family: 'Rajdhani', sans-serif;
-  color: #fff;
-  padding: 20px;
+  z-index: 20;
+  overflow-y: auto;
 }
 
-.lobby-container {
-  background: rgba(14, 18, 28, 0.95);
-  border: 1px solid rgba(0, 240, 255, 0.3);
-  border-radius: 8px;
-  width: 100%;
-  max-width: 1080px;
-  height: 90vh;
-  max-height: 820px;
+.lobby-inner {
+  min-height: 100%;
+  max-width: 1060px;
+  margin: 0 auto;
+  padding: 32px 28px 24px;
   display: flex;
   flex-direction: column;
-  padding: 24px;
-  box-shadow: 0 0 40px rgba(0, 240, 255, 0.15);
+  gap: 20px;
 }
 
 .lobby-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 14px;
+  align-items: flex-end;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #222835;
 }
 
 .brand h1 {
-  font-size: 32px;
-  font-weight: 700;
-  letter-spacing: 3px;
   margin: 0;
-  color: #00f0ff;
-}
-
-.sub-brand {
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: rgba(255, 255, 255, 0.5);
-}
-
-.version-tag {
-  background: rgba(0, 240, 255, 0.1);
-  color: #00f0ff;
-  border: 1px solid rgba(0, 240, 255, 0.3);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 11px;
+  font-size: 30px;
+  letter-spacing: 4px;
   font-weight: 700;
-  letter-spacing: 1px;
+  color: #f2f4f8;
 }
 
-.callsign-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin: 16px 0;
-  gap: 20px;
+.sub {
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: #8a90a0;
 }
 
-.input-group {
+.pilot {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  flex: 1;
+  gap: 6px;
+  min-width: 240px;
 }
 
-.input-group label {
+.pilot label {
   font-size: 11px;
-  letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 2px;
+  color: #8a90a0;
 }
 
-.callsign-input {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(0, 240, 255, 0.4);
-  color: #fff;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 18px;
-  font-weight: 700;
-  padding: 8px 14px;
+.pilot input {
+  background: #12151d;
+  border: 1px solid #2a3040;
   border-radius: 4px;
+  color: #f2f4f8;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 8px 12px;
   outline: none;
 }
 
-.callsign-input:focus {
-  border-color: #00f0ff;
-  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+.pilot input:focus {
+  border-color: #6b7488;
 }
 
-.selected-core-summary {
+.invite {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  background: rgba(0, 240, 255, 0.08);
-  border: 1px solid rgba(0, 240, 255, 0.3);
-  padding: 8px 16px;
-  border-radius: 6px;
+  gap: 16px;
+  border: 1px solid #2a3040;
+  border-radius: 4px;
+  padding: 10px 14px;
+  background: #12151d;
+  font-size: 15px;
 }
 
-.selected-core-summary .badge {
-  font-size: 24px;
+.invite strong {
+  letter-spacing: 1px;
 }
 
-.core-text .name {
-  font-size: 16px;
-  font-weight: 700;
-  color: #00f0ff;
-}
-
-.core-text .maker {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
-  display: block;
-}
-
-.lobby-tabs {
+.tabs {
   display: flex;
-  gap: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 8px;
+  gap: 4px;
+  border-bottom: 1px solid #222835;
 }
 
-.tab-btn {
-  background: transparent;
+.tabs button {
+  background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.6);
-  font-family: 'Rajdhani', sans-serif;
+  border-bottom: 2px solid transparent;
+  color: #8a90a0;
+  font-family: inherit;
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 1px;
-  padding: 6px 14px;
-  border-radius: 4px;
+  padding: 8px 14px;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
-.tab-btn.active {
-  background: rgba(0, 240, 255, 0.15);
-  color: #00f0ff;
+.tabs button.active {
+  color: #f2f4f8;
+  border-bottom-color: #f2f4f8;
 }
 
-.tab-content {
+.content {
   flex: 1;
-  overflow-y: auto;
-  margin: 14px 0;
-  padding-right: 4px;
 }
 
 .cores-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
 }
 
 .core-card {
-  background: rgba(20, 25, 38, 0.75);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: #12151d;
+  border: 1px solid #232835;
+  border-radius: 4px;
+  color: #e6e8ee;
+  font-family: inherit;
   padding: 12px;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
 .core-card:hover {
-  border-color: rgba(0, 240, 255, 0.5);
-  transform: translateY(-2px);
+  border-color: #4a5266;
 }
 
 .core-card.selected {
-  border-color: #00f0ff;
-  background: rgba(0, 240, 255, 0.12);
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.25);
+  border-color: #f2f4f8;
 }
 
-.card-header {
+.core-top {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.card-badge {
-  font-size: 18px;
+.core-badge {
+  font-size: 17px;
 }
 
-.card-name {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 1px;
-}
-
-.card-maker {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
-  margin: 2px 0 6px 0;
-}
-
-.card-ability {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.key-tag {
-  background: #00f0ff;
-  color: #0a0c14;
-  font-weight: 700;
-  font-size: 10px;
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-
-.ability-name {
-  font-size: 12px;
+.core-name {
+  font-size: 15px;
   font-weight: 700;
 }
 
-.cd-tag {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.5);
+.core-cd {
   margin-left: auto;
-}
-
-.card-desc {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
-  line-height: 1.3;
-  margin: 0;
+  color: #8a90a0;
 }
 
-.rooms-panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+.core-maker {
+  font-size: 12px;
+  color: #aab0c0;
 }
 
-.rooms-toolbar {
+.core-desc {
+  font-size: 13px;
+  line-height: 1.4;
+  color: #8a90a0;
+}
+
+.rooms-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
+  font-size: 14px;
+  color: #8a90a0;
 }
 
-.toolbar-title {
-  font-size: 12px;
-  letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.refresh-btn {
-  background: transparent;
-  border: 1px solid #00f0ff;
-  color: #00f0ff;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.empty-rooms {
-  text-align: center;
-  padding: 60px 20px;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.empty-sub {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
+.empty {
+  color: #8a90a0;
+  font-size: 14px;
+  padding: 32px 0;
 }
 
 .room-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 
 .room-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  background: rgba(20, 25, 38, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 10px 16px;
-  border-radius: 6px;
+  gap: 12px;
+  padding: 10px 2px;
+  border-bottom: 1px solid #1c212c;
+  font-size: 14px;
 }
 
 .room-name {
-  font-size: 15px;
   font-weight: 700;
-  margin-right: 14px;
 }
 
-.room-core {
-  font-size: 12px;
-  color: #00f0ff;
-  margin-right: 14px;
+.room-meta {
+  color: #8a90a0;
 }
 
-.room-players {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.5);
+.room-row button {
+  margin-left: auto;
 }
 
-.join-btn {
-  background: #00f0ff;
-  border: none;
-  color: #0a0c14;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  padding: 6px 14px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.controls-grid {
+.controls {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 24px;
 }
 
-.control-box {
-  background: rgba(20, 25, 38, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 6px;
-  padding: 16px;
+.controls h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  letter-spacing: 2px;
+  color: #8a90a0;
+  font-weight: 700;
 }
 
-.control-box h3 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-  color: #00f0ff;
-}
-
-.control-box ul {
+.controls ul {
   list-style: none;
-  padding: 0;
   margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  font-size: 14px;
 }
 
-.control-box li {
-  font-size: 13px;
+.controls li {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+}
+
+.controls p {
+  font-size: 14px;
+  line-height: 1.55;
+  color: #aab0c0;
+  margin: 0 0 10px;
 }
 
 kbd {
-  background: rgba(255, 255, 255, 0.15);
+  background: #1c212c;
+  border: 1px solid #2a3040;
   border-radius: 3px;
-  padding: 2px 6px;
-  font-family: 'JetBrains Mono', monospace;
+  padding: 1px 7px;
+  font-family: inherit;
   font-size: 12px;
+  font-weight: 700;
 }
 
-.control-box p {
-  font-size: 13px;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.8);
-  margin-bottom: 10px;
-}
-
-.lobby-footer {
+.actions {
   display: flex;
-  gap: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 14px;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  border-top: 1px solid #222835;
 }
 
-.action-btn {
-  flex: 1;
-  font-family: 'Rajdhani', sans-serif;
+button {
+  font-family: inherit;
+}
+
+.primary {
+  background: #f2f4f8;
+  border: 1px solid #f2f4f8;
+  border-radius: 4px;
+  color: #0b0d12;
   font-size: 14px;
   font-weight: 700;
-  letter-spacing: 1px;
-  padding: 12px 14px;
-  border-radius: 6px;
+  letter-spacing: 0.5px;
+  padding: 10px 18px;
   cursor: pointer;
-  border: none;
-  transition: all 0.15s ease;
 }
 
-.solo-btn {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-}
-
-.host-btn {
-  background: linear-gradient(135deg, #00f0ff 0%, #3b82f6 100%);
-  color: #080a10;
-  font-weight: 800;
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3);
-}
-
-.join-match-box {
-  flex: 1.5;
-  display: flex;
-  gap: 8px;
-}
-
-.room-code-input {
-  flex: 1;
-  background: rgba(10, 14, 24, 0.9);
-  border: 1px solid rgba(0, 240, 255, 0.3);
-  border-radius: 6px;
-  color: #00f0ff;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-align: center;
-  text-transform: uppercase;
-  padding: 0 12px;
-}
-
-.room-code-input::placeholder {
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 13px;
-  letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.35);
-}
-
-.room-code-input:focus {
-  outline: none;
-  border-color: #00f0ff;
-  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
-}
-
-.join-match-btn {
-  background: #10b981;
-  color: #080a10;
-  font-weight: 800;
-  flex: 1;
-}
-
-.action-btn:hover:not(:disabled) {
-  transform: translateY(-2px);
-  filter: brightness(1.15);
-}
-
-.action-btn:disabled {
-  opacity: 0.5;
+.primary:disabled {
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
-/* Invite Banner */
-.invite-banner {
-  margin: 0 0 16px 0;
-  background: linear-gradient(90deg, rgba(0, 240, 255, 0.15) 0%, rgba(59, 130, 246, 0.2) 100%);
-  border: 1px solid rgba(0, 240, 255, 0.6);
-  border-radius: 8px;
-  padding: 12px 18px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 0 20px rgba(0, 240, 255, 0.25);
-  animation: bannerPulse 2s infinite ease-in-out;
-}
-
-@keyframes bannerPulse {
-  0%, 100% { border-color: rgba(0, 240, 255, 0.6); box-shadow: 0 0 15px rgba(0, 240, 255, 0.2); }
-  50% { border-color: rgba(0, 240, 255, 1); box-shadow: 0 0 25px rgba(0, 240, 255, 0.45); }
-}
-
-.invite-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.invite-bolt {
-  font-size: 24px;
-}
-
-.invite-details {
-  display: flex;
-  flex-direction: column;
-}
-
-.invite-heading {
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: #00f0ff;
-  font-weight: 700;
-}
-
-.invite-sub {
-  font-size: 15px;
-  color: #fff;
-}
-
-.invite-sub strong {
-  color: #00f0ff;
-  font-family: 'JetBrains Mono', monospace;
-  letter-spacing: 1px;
-}
-
-.invite-join-btn {
-  background: #00f0ff;
-  color: #080a10;
-  border: none;
-  font-family: 'Rajdhani', sans-serif;
-  font-size: 15px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  padding: 10px 20px;
-  border-radius: 6px;
+.ghost {
+  background: transparent;
+  border: 1px solid #2a3040;
+  border-radius: 4px;
+  color: #e6e8ee;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 16px;
   cursor: pointer;
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.5);
-  transition: all 0.2s ease;
 }
 
-.invite-join-btn:hover:not(:disabled) {
-  transform: scale(1.05);
-  filter: brightness(1.2);
+.ghost:hover:not(:disabled) {
+  border-color: #6b7488;
+}
+
+.ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.invite button {
+  background: #f2f4f8;
+  border: 1px solid #f2f4f8;
+  border-radius: 4px;
+  color: #0b0d12;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.invite button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.join {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.join input {
+  background: #12151d;
+  border: 1px solid #2a3040;
+  border-radius: 4px;
+  color: #f2f4f8;
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+  width: 130px;
+  padding: 9px 8px;
+  outline: none;
+}
+
+.join input:focus {
+  border-color: #6b7488;
+}
+
+@media (max-width: 640px) {
+  .controls {
+    grid-template-columns: 1fr;
+  }
+
+  .join {
+    margin-left: 0;
+  }
 }
 </style>
