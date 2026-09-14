@@ -111,7 +111,7 @@ export class GameEngine {
   private lastFrameTime = performance.now()
   private vy = 0
   private lastShotTime = 0
-  private lastHitTime = 0
+  private lastHitTime = Date.now()
   private lastMoveTime = Date.now()
   private lastAbilityUsedAt = 0
   private isMouseHeld = false
@@ -158,7 +158,7 @@ export class GameEngine {
       shieldEnd: 0,
       invisible: false,
       lastAbilityAt: 0,
-      lastDamageAt: 0
+      lastDamageAt: Date.now()
     }
     this.players.set(1, this.localPlayer)
 
@@ -235,7 +235,8 @@ export class GameEngine {
       shieldActive: false,
       shieldEnd: 0,
       invisible: false,
-      lastAbilityAt: 0
+      lastAbilityAt: 0,
+      lastDamageAt: Date.now()
     }
     this.players.set(id, player)
     this.scene.updatePlayers([...this.players.values()], this.localPlayer.id)
@@ -353,6 +354,17 @@ export class GameEngine {
     this.setCrouching(!this.localPlayer.crouching)
   }
 
+  /** Any hull expenditure (shots, super, shield, jumps) must pause the
+   *  7s-calm full-hull reconstruction, otherwise firing would refill
+   *  instantly on the next tick. Keeps lastDamageAt (authoritative regen
+   *  clock) and lastHitTime (legacy local fallback) in sync. */
+  private markHullSpent(player: PlayerState, now: number = Date.now()) {
+    player.lastDamageAt = now
+    if (player.id === this.localPlayer.id) {
+      this.lastHitTime = now
+    }
+  }
+
   private triggerJump() {
     if (!this.localPlayer.alive || this.localPlayer.crouching) return
     const onGround = this.isOnGround(this.localPlayer)
@@ -361,7 +373,7 @@ export class GameEngine {
     // Check super jump
     if (this.keys['shift'] && this.localPlayer.health > CFG.SUPER_JUMP_COST) {
       this.localPlayer.health -= CFG.SUPER_JUMP_COST
-      this.lastHitTime = Date.now()
+      this.markHullSpent(this.localPlayer)
       this.vy = CFG.SUPER_JUMP_SPEED
       sound.playSuperJump()
       if (this.mode === 'client') {
@@ -381,7 +393,7 @@ export class GameEngine {
       this.localPlayer.health -= CFG.SUPER_COST
       this.localPlayer.superActive = true
       this.localPlayer.superEnd = Date.now() + CFG.SUPER_DURATION
-      this.lastHitTime = Date.now()
+      this.markHullSpent(this.localPlayer)
       sound.playSuper()
       if (this.mode === 'client') {
         this.client?.send({ type: 'super' })
@@ -395,7 +407,7 @@ export class GameEngine {
       this.localPlayer.health -= CFG.SHIELD_COST
       this.localPlayer.shieldActive = true
       this.localPlayer.shieldEnd = Date.now() + CFG.SHIELD_DURATION
-      this.lastHitTime = Date.now()
+      this.markHullSpent(this.localPlayer)
       sound.playShield()
       if (this.mode === 'client') {
         this.client?.send({ type: 'shield' })
@@ -470,6 +482,7 @@ export class GameEngine {
           const drain = Math.min(30, nearest.health - 1)
           if (drain > 0) {
             nearest.health -= drain
+            nearest.lastDamageAt = now
             player.health = Math.min(CFG.MAX_HEALTH, player.health + Math.min(15, drain))
           }
         }
@@ -506,6 +519,7 @@ export class GameEngine {
             const drain = Math.min(8, e.health - 1)
             if (drain > 0) {
               e.health -= drain
+              e.lastDamageAt = Date.now()
               drainedTotal += drain
             }
           }
@@ -536,7 +550,7 @@ export class GameEngine {
 
     this.lastShotTime = now
     this.localPlayer.health -= CFG.SHOT_COST_SINGLE
-    this.lastHitTime = now
+    this.markHullSpent(this.localPlayer, now)
     sound.playShoot(this.localPlayer.superActive)
 
     const yaw = this.localPlayer.yaw, pitch = this.localPlayer.pitch
@@ -844,6 +858,7 @@ export class GameEngine {
           p.alive = true
           p.respawnAt = 0
           p.crouching = false
+          p.lastDamageAt = now
           if (p.id === this.localPlayer.id) {
             this.localPlayer.x = s.x
             this.localPlayer.y = s.y
@@ -861,7 +876,9 @@ export class GameEngine {
 
       // Nanite Regeneration: receiving damage stops regen for 7 seconds.
       // Once 7 seconds of calm pass without receiving damage, nanite regen is instant to full hull.
-      const lastDmg = p.lastDamageAt ?? (p.id === 1 ? this.lastHitTime : 0)
+      // Hull spends (shots/super/shield/jumps) also pause regen via markHullSpent,
+      // so take the most recent of either clock (lastHitTime is the legacy local fallback).
+      const lastDmg = Math.max(p.lastDamageAt ?? 0, p.id === this.localPlayer.id ? this.lastHitTime : 0)
       if (p.health < CFG.MAX_HEALTH && now - lastDmg >= CFG.REGEN_DELAY) {
         p.health = CFG.MAX_HEALTH
         if (p.id === this.localPlayer.id) {
@@ -1301,6 +1318,7 @@ export class GameEngine {
       if (!shooter.alive || shooter.invisible) return
       if (shooter.health <= CFG.SHOT_COST_SINGLE) return
       shooter.health -= CFG.SHOT_COST_SINGLE
+      shooter.lastDamageAt = Date.now()
       // Hitscan from the shooter's true eye, not our (possibly stale) copy
       const yaw = shooter.yaw, pitch = shooter.pitch
       const dx = msg.dx ?? (-Math.cos(pitch) * Math.sin(yaw))
@@ -1373,6 +1391,7 @@ export class GameEngine {
       const p = this.players.get(fromId)!
       if (p.alive && !p.superActive && !p.invisible && p.health >= CFG.SUPER_COST + 1) {
         p.health -= CFG.SUPER_COST
+        p.lastDamageAt = Date.now()
         p.superActive = true
         p.superEnd = Date.now() + CFG.SUPER_DURATION
       }
@@ -1380,8 +1399,15 @@ export class GameEngine {
       const p = this.players.get(fromId)!
       if (p.alive && !p.shieldActive && !p.superActive && !p.invisible && p.health >= CFG.SHIELD_COST + 1) {
         p.health -= CFG.SHIELD_COST
+        p.lastDamageAt = Date.now()
         p.shieldActive = true
         p.shieldEnd = Date.now() + CFG.SHIELD_DURATION
+      }
+    } else if (msg.type === 'jump_super' && fromId && this.players.has(fromId)) {
+      const p = this.players.get(fromId)!
+      if (p.alive && !p.crouching && p.health > CFG.SUPER_JUMP_COST) {
+        p.health -= CFG.SUPER_JUMP_COST
+        p.lastDamageAt = Date.now()
       }
     } else if (msg.type === 'classAbility' && fromId && this.players.has(fromId)) {
       const p = this.players.get(fromId)!

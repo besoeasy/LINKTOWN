@@ -29,6 +29,7 @@ export function spawnBots(count: number, map: MapData): PlayerState[] {
       shieldEnd: 0,
       invisible: false,
       lastAbilityAt: 0,
+      lastDamageAt: Date.now(),
       isBot: true
     })
   }
@@ -58,6 +59,7 @@ export function tickBots(
         bot.health = CFG.MAX_HEALTH
         bot.alive = true
         bot.respawnAt = 0
+        bot.lastDamageAt = now
       }
       continue
     }
