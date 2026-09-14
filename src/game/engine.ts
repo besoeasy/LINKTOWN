@@ -112,6 +112,24 @@ export class GameEngine {
   private vy = 0
   private lastShotTime = 0
   private lastHitTime = Date.now()
+  private inputDisposers: Array<() => void> = []
+  /** Pending setTimeout/setInterval handles (cloak, leech, burnout) so
+   *  destroy()/respawn can cancel them instead of leaking callbacks. */
+  private abilityTimers = new Set<ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>>()
+  /** Last accepted shot timestamp per remote peer (host-side fire-rate limit). */
+  private remoteShotAt = new Map<number, number>()
+  private trackTimer(t: ReturnType<typeof setTimeout> | ReturnType<typeof setInterval>) {
+    this.abilityTimers.add(t)
+    return t
+  }
+
+  private clearAbilityTimers() {
+    for (const t of this.abilityTimers) {
+      clearTimeout(t as ReturnType<typeof setTimeout>)
+      clearInterval(t as ReturnType<typeof setInterval>)
+    }
+    this.abilityTimers.clear()
+  }
   private lastMoveTime = Date.now()
   private lastAbilityUsedAt = 0
   private isMouseHeld = false
@@ -157,6 +175,7 @@ export class GameEngine {
       shieldActive: false,
       shieldEnd: 0,
       invisible: false,
+      cloakEnd: 0,
       lastAbilityAt: 0,
       lastDamageAt: Date.now()
     }
@@ -210,6 +229,7 @@ export class GameEngine {
 
   onPeerDisconnected(peerId: number) {
     this.players.delete(peerId)
+    this.remoteShotAt.delete(peerId)
     this.scene.updatePlayers([...this.players.values()], this.localPlayer.id)
   }
 
@@ -235,6 +255,7 @@ export class GameEngine {
       shieldActive: false,
       shieldEnd: 0,
       invisible: false,
+      cloakEnd: 0,
       lastAbilityAt: 0,
       lastDamageAt: Date.now()
     }
@@ -280,7 +301,19 @@ export class GameEngine {
   }
 
   private setupInput(canvas: HTMLCanvasElement) {
-    window.addEventListener('keydown', (e) => {
+    // All listeners are tracked so destroy() can remove them — otherwise
+    // every rematch (Play Again / lobby) stacks ghost engines that keep
+    // firing into the destroyed scene.
+    const on = <K extends keyof WindowEventMap>(
+      target: Window | Document,
+      type: string,
+      handler: (e: any) => void
+    ) => {
+      target.addEventListener(type, handler as EventListener)
+      this.inputDisposers.push(() => target.removeEventListener(type, handler as EventListener))
+    }
+
+    on(window, 'keydown', (e: KeyboardEvent) => {
       this.keys[e.key.toLowerCase()] = true
       if (e.key.toLowerCase() === 'c') {
         this.toggleCrouch()
@@ -295,18 +328,18 @@ export class GameEngine {
       }
     })
 
-    window.addEventListener('keyup', (e) => {
+    on(window, 'keyup', (e: KeyboardEvent) => {
       this.keys[e.key.toLowerCase()] = false
     })
 
-    window.addEventListener('mousemove', (e) => {
+    on(window, 'mousemove', (e: MouseEvent) => {
       if (document.pointerLockElement) {
         this.localPlayer.yaw -= e.movementX * 0.0018
         this.localPlayer.pitch = Math.max(-1.45, Math.min(1.45, this.localPlayer.pitch - e.movementY * 0.0018))
       }
     })
 
-    window.addEventListener('mousedown', (e) => {
+    on(window, 'mousedown', (e: MouseEvent) => {
       if (e.button !== 0) return
       this.isMouseHeld = true
       if (!document.pointerLockElement) {
@@ -316,23 +349,30 @@ export class GameEngine {
       this.shoot()
     })
 
-    window.addEventListener('mouseup', (e) => {
+    on(window, 'mouseup', (e: MouseEvent) => {
       if (e.button === 0) {
         this.isMouseHeld = false
       }
     })
 
-    window.addEventListener('blur', () => {
+    on(window, 'blur', () => {
       this.isMouseHeld = false
       this.keys = {}
     })
 
-    document.addEventListener('pointerlockchange', () => {
+    on(document, 'pointerlockchange', () => {
       this.isPointerLocked = !!document.pointerLockElement
       if (!document.pointerLockElement) {
         this.isMouseHeld = false
       }
     })
+  }
+
+  private teardownInput() {
+    for (const dispose of this.inputDisposers) {
+      try { dispose() } catch {}
+    }
+    this.inputDisposers = []
   }
 
   private setCrouching(state: boolean) {
@@ -389,6 +429,7 @@ export class GameEngine {
 
   private triggerSuper() {
     if (!this.localPlayer.alive || this.localPlayer.superActive || this.localPlayer.invisible) return
+    if (this.localPlayer.shieldActive) return
     if (this.localPlayer.health >= CFG.SUPER_COST + 1) {
       this.localPlayer.health -= CFG.SUPER_COST
       this.localPlayer.superActive = true
@@ -452,7 +493,7 @@ export class GameEngine {
       }
       case 'chumantr':
         player.invisible = true
-        setTimeout(() => { player.invisible = false }, 10000)
+        player.cloakEnd = now + 10000
         break
       case 'denja':
         // Overdrive: handled via speed multiplier in tick
@@ -506,10 +547,11 @@ export class GameEngine {
       case 'parasite': {
         // Leech Burst: 8/s off all strangers within 15u for 6s, kin (other parasites) immune, keeper gains half.
         let ticks = 0
-        const leech = setInterval(() => {
+        const leech: ReturnType<typeof setInterval> = setInterval(() => {
           ticks++
           if (!player.alive || ticks > 6) {
             clearInterval(leech)
+            this.abilityTimers.delete(leech)
             return
           }
           let drainedTotal = 0
@@ -526,17 +568,23 @@ export class GameEngine {
           if (drainedTotal > 0) {
             player.health = Math.min(CFG.MAX_HEALTH, player.health + Math.floor(drainedTotal / 2))
           }
-          if (ticks >= 6) clearInterval(leech)
+          if (ticks >= 6) {
+            clearInterval(leech)
+            this.abilityTimers.delete(leech)
+          }
         }, 1000)
+        this.trackTimer(leech)
         break
       }
       case 'berserker': {
         // Red Rage: +50% dmg / +25% speed handled via lastAbilityAt window. Burnout crash -50 after 8s.
-        setTimeout(() => {
+        const burnout: ReturnType<typeof setTimeout> = setTimeout(() => {
+          this.abilityTimers.delete(burnout)
           if (player.alive) {
             this.applyDamage(player.id, 50, player.id)
           }
         }, 8000)
+        this.trackTimer(burnout)
         break
       }
     }
@@ -598,7 +646,7 @@ export class GameEngine {
     const _oz = oz ?? shooter.z
 
     const targets = [...this.players.values()].filter(p => p.id !== shooter.id && p.alive && !p.invisible)
-    const hit = raycastPlayers(shooter.id, _ox, _oy, _oz, _dx, _dy, _dz, targets, this.map)
+    const hit = raycastPlayers(shooter.id, _ox, _oy, _oz, _dx, _dy, _dz, targets, this.map, this.nearbyBoxes)
 
     if (hit) {
       const distMult = Math.max(0.25, 1 - hit.t / 160)
@@ -658,7 +706,8 @@ export class GameEngine {
       target.alive = false
       target.respawnAt = Date.now() + CFG.RESPAWN_DELAY
 
-      if (shooter) {
+      // Suicides (gambler death-roll, berserker burnout) award no frag.
+      if (shooter && shooter.id !== target.id) {
         shooter.score++
       }
 
@@ -794,6 +843,10 @@ export class GameEngine {
         this.nearbyBoxes,
         dt,
         (bot, target) => {
+          // Bots run the same hull economy as humans: no nanites, no shot.
+          if (bot.health <= CFG.SHOT_COST_SINGLE) return
+          bot.health -= CFG.SHOT_COST_SINGLE
+          bot.lastDamageAt = now
           const dx = target.x - bot.x
           const dy = target.y + 1.2 - (bot.y + 1.2)
           const dz = target.z - bot.z
@@ -801,7 +854,7 @@ export class GameEngine {
           if (len > 0) {
             // Visible projectile for bot shot
             this.scene.spawnProjectile(bot.x, bot.y + 1.2, bot.z, dx / len, dy / len, dz / len, false)
-            const hit = raycastPlayers(bot.id, bot.x, bot.y + 1.2, bot.z, dx / len, dy / len, dz / len, targets, this.map)
+            const hit = raycastPlayers(bot.id, bot.x, bot.y + 1.2, bot.z, dx / len, dy / len, dz / len, targets, this.map, this.nearbyBoxes)
             if (hit) {
               const rageMult = bot.character === 'berserker' && Date.now() - bot.lastAbilityAt < 8000 ? 1.5 : 1
               this.applyDamage(hit.id, CFG.DMG_SINGLE * 0.5 * rageMult, bot.id)
@@ -859,6 +912,13 @@ export class GameEngine {
           p.respawnAt = 0
           p.crouching = false
           p.lastDamageAt = now
+          // Fresh chassis: no cloak, overclock or barrier survives death.
+          p.invisible = false
+          p.cloakEnd = 0
+          p.superActive = false
+          p.superEnd = 0
+          p.shieldActive = false
+          p.shieldEnd = 0
           if (p.id === this.localPlayer.id) {
             this.localPlayer.x = s.x
             this.localPlayer.y = s.y
@@ -888,6 +948,10 @@ export class GameEngine {
 
       if (p.superActive && now > p.superEnd) p.superActive = false
       if (p.shieldActive && now > p.shieldEnd) p.shieldActive = false
+      if (p.invisible && p.cloakEnd && now >= p.cloakEnd) {
+        p.invisible = false
+        p.cloakEnd = 0
+      }
     }
 
     // Nanite cache pickup checks: closest alive shell within 5u radius siphons mass
@@ -1222,12 +1286,21 @@ export class GameEngine {
       for (const p of msg.players) {
         if (p.id === this.localPlayer.id) {
           const wasDead = !this.localPlayer.alive && p.alive
-          // Sync server-authoritative health, score, status
+          // Sync server-authoritative health, score, status. lastDamageAt
+          // takes the newest of either clock so the HUD regen countdown
+          // tracks damage the host observed; cloak/invisibility also come
+          // from the host because clients never apply Q locally.
           this.localPlayer.health = p.health
           this.localPlayer.score = p.score
           this.localPlayer.alive = p.alive
           this.localPlayer.superActive = p.superActive
           this.localPlayer.shieldActive = p.shieldActive
+          this.localPlayer.invisible = p.invisible
+          this.localPlayer.cloakEnd = p.cloakEnd ?? 0
+          this.localPlayer.lastDamageAt = Math.max(
+            this.localPlayer.lastDamageAt ?? 0,
+            p.lastDamageAt ?? 0
+          )
           if (wasDead) {
             this.localPlayer.x = p.x
             this.localPlayer.y = p.y
@@ -1280,10 +1353,29 @@ export class GameEngine {
       const p = this.players.get(fromId)!
       p.yaw = msg.yaw
       p.pitch = msg.pitch
-      // Remote coordinates: authoritatively update from client packet
-      if (typeof msg.y === 'number' && isFinite(msg.y)) p.y = msg.y
-      if (typeof msg.x === 'number' && isFinite(msg.x)) p.x = msg.x
-      if (typeof msg.z === 'number' && isFinite(msg.z)) p.z = msg.z
+      // Remote coordinates: client-authoritative but speed-clamped so a
+      // tampered client cannot teleport across the map. Budget covers the
+      // fastest legit combo (sprint × super × denja) plus lag slack.
+      const dtBudget = Math.min(Math.max(typeof msg.dt === 'number' ? msg.dt : 0.05, 0), 1)
+      const maxStep = CFG.RUN_SPEED * 2 * 2 * dtBudget + 2.5
+      const maxDy = CFG.JUMP_PAD_LAUNCH_VY * dtBudget + 2.5
+      if (typeof msg.x === 'number' && isFinite(msg.x) && typeof msg.z === 'number' && isFinite(msg.z)) {
+        let dx = msg.x - p.x
+        let dz = msg.z - p.z
+        const dist = Math.hypot(dx, dz)
+        if (dist > maxStep) {
+          const k = maxStep / dist
+          dx *= k
+          dz *= k
+        }
+        const col = resolveCollision(p.x + dx, p.y, p.z + dz, this.map, this.nearbyBoxes)
+        p.x = col.x
+        p.z = col.z
+      }
+      if (typeof msg.y === 'number' && isFinite(msg.y)) {
+        const dy = msg.y - p.y
+        p.y = p.y + Math.max(-maxDy, Math.min(maxDy, dy))
+      }
       // Crouched remotes are stationary until they send uncrouch
       if (p.crouching) return
       // Fallback dead-reckoning if client did not send x or z
@@ -1306,8 +1398,8 @@ export class GameEngine {
           if (p.character === 'berserker' && rn - p.lastAbilityAt < 8000) {
             speed *= 1.25
           }
-          mx = (mx / len) * speed * msg.dt
-          mz = (mz / len) * speed * msg.dt
+          mx = (mx / len) * speed * Math.min(Math.max(msg.dt || 0, 0), 0.25)
+          mz = (mz / len) * speed * Math.min(Math.max(msg.dt || 0, 0), 0.25)
           const col = resolveCollision(p.x + mx, p.y, p.z + mz, this.map, this.nearbyBoxes)
           p.x = col.x
           p.z = col.z
@@ -1316,6 +1408,11 @@ export class GameEngine {
     } else if (msg.type === 'shoot' && fromId && this.players.has(fromId)) {
       const shooter = this.players.get(fromId)!
       if (!shooter.alive || shooter.invisible) return
+      // Host-side fire-rate limit mirrors the local 80ms gate so packet
+      // spam cannot buy unlimited DPS.
+      const now = Date.now()
+      if (now - (this.remoteShotAt.get(fromId) ?? 0) < 80) return
+      this.remoteShotAt.set(fromId, now)
       if (shooter.health <= CFG.SHOT_COST_SINGLE) return
       shooter.health -= CFG.SHOT_COST_SINGLE
       shooter.lastDamageAt = Date.now()
@@ -1389,7 +1486,7 @@ export class GameEngine {
       }
     } else if (msg.type === 'super' && fromId && this.players.has(fromId)) {
       const p = this.players.get(fromId)!
-      if (p.alive && !p.superActive && !p.invisible && p.health >= CFG.SUPER_COST + 1) {
+      if (p.alive && !p.superActive && !p.shieldActive && !p.invisible && p.health >= CFG.SUPER_COST + 1) {
         p.health -= CFG.SUPER_COST
         p.lastDamageAt = Date.now()
         p.superActive = true
@@ -1412,7 +1509,12 @@ export class GameEngine {
     } else if (msg.type === 'classAbility' && fromId && this.players.has(fromId)) {
       const p = this.players.get(fromId)!
       if (p.alive && !p.superActive && !p.invisible) {
-        p.lastAbilityAt = Date.now()
+        // Host-side cooldown mirrors the local gate so Q-packet spam
+        // cannot buy infinite heals/drains/immunities.
+        const now = Date.now()
+        const cooldown = CORE_DETAILS[p.character]?.cooldown ?? 0
+        if (cooldown > 0 && now - (p.lastAbilityAt || 0) < cooldown) return
+        p.lastAbilityAt = now
         this.applyAbility(p)
       }
     } else if (msg.type === 'crouch' && fromId && this.players.has(fromId)) {
@@ -1422,6 +1524,8 @@ export class GameEngine {
 
   destroy() {
     this.isRunning = false
+    this.teardownInput()
+    this.clearAbilityTimers()
     if (this.tickInterval) clearInterval(this.tickInterval)
     if (this.pingInterval) clearInterval(this.pingInterval)
     sound.stopFootsteps()

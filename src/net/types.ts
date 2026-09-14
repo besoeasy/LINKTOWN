@@ -19,6 +19,7 @@ export interface PlayerState {
   shieldActive: boolean
   shieldEnd: number
   invisible: boolean
+  cloakEnd?: number
   lastAbilityAt: number
   lastDamageAt?: number
   isBot?: boolean

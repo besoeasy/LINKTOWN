@@ -2939,6 +2939,20 @@ export class SceneRenderer {
       this.scene.remove(l)
     }
     this.streetlampLights = []
+    // Dispose remote-player meshes (geometries/materials/textures), otherwise
+    // every rematch leaks GPU memory — renderer.dispose() alone does not free those.
+    for (const [, grp] of this.playerMeshes) {
+      this.scene.remove(grp)
+      grp.traverse((obj: any) => {
+        if (obj.geometry) obj.geometry.dispose?.()
+        const mats = Array.isArray(obj.material) ? obj.material : obj.material ? [obj.material] : []
+        for (const m of mats) {
+          m.map?.dispose?.()
+          m.dispose?.()
+        }
+      })
+    }
+    this.playerMeshes.clear()
     if (this.plazaLight) this.scene.remove(this.plazaLight)
     if (this.towerBeacon) this.scene.remove(this.towerBeacon)
     this.renderer.dispose()

@@ -28,6 +28,7 @@ export function spawnBots(count: number, map: MapData): PlayerState[] {
       shieldActive: false,
       shieldEnd: 0,
       invisible: false,
+      cloakEnd: 0,
       lastAbilityAt: 0,
       lastDamageAt: Date.now(),
       isBot: true
@@ -60,6 +61,12 @@ export function tickBots(
         bot.alive = true
         bot.respawnAt = 0
         bot.lastDamageAt = now
+        bot.invisible = false
+        bot.cloakEnd = 0
+        bot.superActive = false
+        bot.superEnd = 0
+        bot.shieldActive = false
+        bot.shieldEnd = 0
       }
       continue
     }

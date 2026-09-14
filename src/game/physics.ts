@@ -119,7 +119,8 @@ export function raycastPlayers(
   ox: number, oy: number, oz: number,
   dx: number, dy: number, dz: number,
   players: PlayerTarget[],
-  map: MapData
+  map: MapData,
+  nearby?: (x: number, z: number) => Box[]
 ): { id: number; t: number } | null {
   let best: { id: number; t: number } | null = null
   for (const p of players) {
@@ -138,7 +139,25 @@ export function raycastPlayers(
   }
 
   if (best) {
-    for (const box of map.boxes) {
+    // Occlusion: only test boxes near the ray (spatial grid) instead of
+    // scanning all ~700 map boxes on every shot.
+    let candidates: Box[] | Iterable<Box>
+    if (nearby) {
+      const seen = new Set<Box>()
+      const out: Box[] = []
+      for (let t = 0; t <= Math.min(best.t, 140); t += 10) {
+        for (const b of nearby(ox + dx * t, oz + dz * t)) {
+          if (!seen.has(b)) {
+            seen.add(b)
+            out.push(b)
+          }
+        }
+      }
+      candidates = out
+    } else {
+      candidates = map.boxes
+    }
+    for (const box of candidates) {
       const bt = rayVsBox(ox, oy, oz, dx, dy, dz, box)
       if (bt < best.t - 0.1) {
         best = null

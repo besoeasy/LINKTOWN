@@ -76,9 +76,14 @@ export class P2PHost {
   }
 
   public seed = 12345
+  private spawnProvider?: (playerId: number) => { x: number; y: number; z: number; yaw?: number }
 
   setSeed(seed: number) {
     this.seed = seed
+  }
+
+  setSpawnProvider(provider: (playerId: number) => { x: number; y: number; z: number; yaw?: number }) {
+    this.spawnProvider = provider
   }
 
   async handleIncomingOffer(
@@ -166,11 +171,16 @@ export class P2PHost {
     if (!peer.dc) return
     peer.dc.onopen = () => {
       console.log(`[Host] Peer ${peer.id} connected via DataChannel`)
+      // Allocate the authoritative spawn up front so the client starts
+      // exactly where the host will register them (same pending entry
+      // that onPeerJoined -> addRemotePlayer consumes).
+      const spawn = this.spawnProvider?.(peer.id)
       peer.dc?.send(JSON.stringify({
         type: 'welcome',
         playerId: peer.id,
         seed: this.seed,
-        hostId: 1
+        hostId: 1,
+        ...(spawn ? { x: spawn.x, y: spawn.y, z: spawn.z, yaw: spawn.yaw } : {})
       }))
       if (this.onPeerJoinedCallback) {
         this.onPeerJoinedCallback(peer)

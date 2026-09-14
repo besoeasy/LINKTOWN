@@ -522,6 +522,7 @@ const hostLan = async () => {
   lanSignaler = new LanSignaler()
   try {
     const ws = await lanSignaler.connect(window.location.host || 'localhost:30300')
+    p2pHost!.setSeed(seed)
     ws.send(JSON.stringify({
       type: 'register_host',
       seed,
