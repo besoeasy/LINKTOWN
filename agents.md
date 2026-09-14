@@ -115,7 +115,8 @@ Each chassis is powered by an Atma Core holding a copied mind-pattern. The core 
 
 1. **Lobby & Room Codes**:
    - Host generates a 4-character room code and opens it on the PeerJS Cloud broker.
-   - The invite link (`#room=CODE`) is shareable; clients join by code — no accounts, no relays.
+   - The invite link (`#room=CODE`) is shareable; clients join by code — no accounts.
+   - Public listing runs on a presence channel (`src/net/directory.ts`): hosts heartbeat a retained MQTT listing (`ltown/rooms/<CODE>`, 15s interval, 45s expiry), the lobby subscribes and shows all live public games. If the broker is unreachable the lobby degrades to manual code join. Joins always stay direct PeerJS P2P.
 2. **WebRTC Signaling (PeerJS or LAN broker)**:
    - Joining peer opens a DataConnection to the host's `ltown3049-<CODE>` peer ID.
    - Host assigns a player ID, allocates an authoritative spawn, and returns both in a `welcome` packet.

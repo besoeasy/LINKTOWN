@@ -8,6 +8,7 @@ import type { PlayerState, KillMsg, HitConfirmMsg, TelemetryData, MatchResults }
 import { P2PHost, P2PClient } from './net/webrtc'
 import { generateRoomCode, PeerJSHost, PeerJSClient } from './net/peer'
 import { encodeSignal, decodeSignal } from './net/qr'
+import { RoomDirectory, type PublicRoom } from './net/directory'
 
 import Lobby from './components/Lobby.vue'
 import Hud from './components/Hud.vue'
@@ -53,6 +54,30 @@ const telemetry = ref<TelemetryData>({
 })
 let currentMatchMode: 'solo' | 'host' | 'client' = 'solo'
 
+// Public room directory (presence; joins stay direct PeerJS P2P)
+const publicRooms = ref<PublicRoom[]>([])
+const dirOnline = ref(false)
+let directory: RoomDirectory | null = null
+let dirUnsub: (() => void) | null = null
+
+const announceHostedRoom = () => {
+  if (!directory || currentMatchMode !== 'host' || !currentRoomCode.value) return
+  directory.publish({
+    code: currentRoomCode.value,
+    name: `${callsign.value}'s trial`,
+    core: selectedCore.value,
+    players: (peerHost?.peers.size ?? 0) + 1
+  })
+}
+
+const withdrawHostedRoom = () => {
+  directory?.unpublish()
+}
+
+const refreshRooms = () => {
+  directory?.refresh()
+}
+
 // QR / LAN Modal State
 const qrModal = ref({
   show: false,
@@ -90,6 +115,16 @@ onMounted(() => {
       inviteRoomCode.value = code.trim().toUpperCase()
     }
   }
+
+  // Connect to the public room directory in the background. If the
+  // broker is unreachable the lobby just shows manual code join.
+  directory = new RoomDirectory()
+  dirUnsub = directory.onRooms((rooms) => {
+    publicRooms.value = rooms
+  })
+  directory.connect().then((ok) => {
+    dirOnline.value = ok
+  })
 
   // Expose test and telemetry hooks on window for multi-container verification
   if (typeof window !== 'undefined') {
@@ -159,6 +194,9 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('keydown', handleGlobalKey)
   window.removeEventListener('keyup', handleGlobalKeyUp)
+  dirUnsub?.()
+  directory?.destroy()
+  directory = null
   engine?.destroy()
 })
 
@@ -231,11 +269,20 @@ const initEngine = (seed: number, mode: 'solo' | 'host' | 'client') => {
 const handlePlayAgain = () => {
   isGameOver.value = false
   matchResults.value = null
+  withdrawHostedRoom()
+  const seed = engine?.map?.seed ?? getDailySeed()
   engine?.destroy()
   if (currentMatchMode === 'solo') {
     startSolo()
   } else if (currentMatchMode === 'host') {
-    startHostMatch()
+    if (peerHost) {
+      // PeerJS room stays open: re-init the engine on the same broker room.
+      initEngine(seed, 'host')
+      engine?.setHostNetwork(peerHost)
+      announceHostedRoom()
+    } else {
+      startHostMatch()
+    }
   } else {
     inLobby.value = true
   }
@@ -244,11 +291,16 @@ const handlePlayAgain = () => {
 const handleReturnToLobby = () => {
   isGameOver.value = false
   matchResults.value = null
+  withdrawHostedRoom()
   engine?.destroy()
   peerHost?.destroy()
   peerClient?.destroy()
+  p2pHost?.destroy()
+  p2pClient?.destroy()
   peerHost = null
   peerClient = null
+  p2pHost = null
+  p2pClient = null
   currentRoomCode.value = ''
   if (typeof window !== 'undefined') {
     window.location.hash = ''
@@ -274,11 +326,13 @@ const createPeerRoom = () => {
       console.log(`[App] Peer ${peerId} joined match!`)
       p2pStatus.value = `P2P LINKED (${peerHost?.peers.size || 0} PEERS)`
       engine?.onPeerConnected(peerId)
+      announceHostedRoom()
     },
     (peerId) => {
       console.log(`[App] Peer ${peerId} disconnected`)
       p2pStatus.value = `P2P LINKED (${peerHost?.peers.size || 0} PEERS)`
       engine?.onPeerDisconnected(peerId)
+      announceHostedRoom()
     },
     (roomCode) => {
       console.log(`[App] Host room ${roomCode} ready on PeerJS Cloud`)
@@ -292,6 +346,7 @@ const createPeerRoom = () => {
   peerHost.setSeed(seed)
   initEngine(seed, 'host')
   engine?.setHostNetwork(peerHost)
+  announceHostedRoom()
 }
 
 const joinPeerRoom = (code: string) => {
@@ -507,11 +562,14 @@ const handleSignalSubmit = (val: string) => {
       v-if="inLobby"
       v-model:callsign="callsign"
       v-model:selectedCore="selectedCore"
+      :rooms="publicRooms"
+      :dir-online="dirOnline"
       :invite-room-code="inviteRoomCode"
       :is-connecting="isConnecting"
       @start-solo="startSolo"
       @create-peer-room="createPeerRoom"
       @join-peer-room="joinPeerRoom"
+      @refresh-rooms="refreshRooms"
     />
 
     <!-- In-Game HUD -->
