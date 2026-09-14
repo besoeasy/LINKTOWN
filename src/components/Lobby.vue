@@ -137,7 +137,7 @@ const handleJoinInput = () => {
             <h2>Rules</h2>
             <p>
               Hull is ammunition: shots, jumps, shields and abilities spend it.
-              Survive 7 seconds of calm to reconstruct to full hull.
+              Survive 7 seconds of calm and hull rebuilds gradually.
             </p>
             <p>
               All chassis are identical. Only the Atma Core differs.

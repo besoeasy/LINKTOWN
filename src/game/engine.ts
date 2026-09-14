@@ -934,14 +934,14 @@ export class GameEngine {
         continue
       }
 
-      // Nanite Regeneration: receiving damage stops regen for 7 seconds.
-      // Once 7 seconds of calm pass without receiving damage, nanite regen is instant to full hull.
+      // Nanite Regeneration: after 7 seconds of calm (no damage taken,
+      // no hull spent), hull rebuilds gradually at REGEN_RATE per second.
       // Hull spends (shots/super/shield/jumps) also pause regen via markHullSpent,
       // so take the most recent of either clock (lastHitTime is the legacy local fallback).
       const lastDmg = Math.max(p.lastDamageAt ?? 0, p.id === this.localPlayer.id ? this.lastHitTime : 0)
       if (p.health < CFG.MAX_HEALTH && now - lastDmg >= CFG.REGEN_DELAY) {
-        p.health = CFG.MAX_HEALTH
-        if (p.id === this.localPlayer.id) {
+        p.health = Math.min(CFG.MAX_HEALTH, p.health + CFG.REGEN_RATE * dt)
+        if (p.health >= CFG.MAX_HEALTH && p.id === this.localPlayer.id) {
           sound.playCachePickup()
         }
       }

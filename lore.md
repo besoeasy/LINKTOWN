@@ -9,7 +9,7 @@
 - One chassis for everything: army, miner, researcher. Same hull, same speed, same wiring.
 - An inert nanote shell. A core gives it life. Each core is a perfect pyramid suspended in nanite fluid — a floating heart. Insert it, and the shell takes the core's form and identity.
 - No variants, no upgrades — fixed by arena charter so only cores compete.
-- Hull = nanite count: fuel, function, and mass at once. Fire, jumps, and shields spend nanites. Survive 7 seconds of calm — no hits taken, no nanites spent — and the core reconstructs the shell to full hull in an instant. Any spend or wound restarts the clock. Destroyed swarms reprint whole after a 7-second reprint delay.
+- Hull = nanite count: fuel, function, and mass at once. Fire, jumps, and shields spend nanites. Survive 7 seconds of calm — no hits taken, no nanites spent — and the core starts rebuilding the shell, 1 hull per second. Any spend or wound restarts the clock. Destroyed swarms reprint whole after a 7-second reprint delay.
 - Destroyed swarms eject a nanite cache (+100 hull) that nearby shells can siphon — salvage.
 
 ## The Atma Cores

@@ -110,13 +110,17 @@ const rPercent = computed(() => {
   return props.player.health >= 81 ? 100 : Math.max(0, (props.player.health / 80) * 100)
 })
 
-// Nanite Regeneration Timer: receiving damage halts regen for 7 seconds, then instant full hull
+// Nanite Regeneration: 7s calm after damage/spend, then gradual rebuild
 const regenCooldownRemaining = computed(() => {
   if (props.player.health >= CFG.MAX_HEALTH) return 0
   const lastDmg = props.player.lastDamageAt || 0
   const elapsed = (currentTime.value - lastDmg) / 1000
   const cooldownSec = CFG.REGEN_DELAY / 1000
   return Math.max(0, cooldownSec - elapsed)
+})
+
+const isRegenerating = computed(() => {
+  return props.player.health < CFG.MAX_HEALTH && regenCooldownRemaining.value <= 0
 })
 
 const cTimeRemaining = computed(() => {
@@ -238,6 +242,9 @@ const cPercent = computed(() => {
           <span class="hull-title">RX-11 NANITE CENSUS</span>
           <span v-if="regenCooldownRemaining > 0" class="hull-regen-badge">
             REGEN IN {{ regenCooldownRemaining.toFixed(1) }}s
+          </span>
+          <span v-else-if="isRegenerating" class="hull-regen-badge active">
+            +{{ CFG.REGEN_RATE }}/S REBUILDING
           </span>
           <span class="hull-val">{{ Math.ceil(player.health) }} / {{ CFG.MAX_HEALTH }}</span>
         </div>
@@ -674,6 +681,12 @@ const cPercent = computed(() => {
   border: 1px solid rgba(245, 158, 11, 0.4);
   padding: 1px 7px;
   border-radius: 4px;
+}
+
+.hull-regen-badge.active {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.15);
+  border-color: rgba(16, 185, 129, 0.4);
 }
 
 .hull-val {
