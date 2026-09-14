@@ -39,6 +39,12 @@ const handleJoinInput = () => {
         <div class="brand">
           <h1>L-TOWN</h1>
           <span class="sub">3049 REMOTE AGE // ATMA CORES</span>
+          <a
+            class="repo"
+            href="https://github.com/besoeasy/LINKTOWN"
+            target="_blank"
+            rel="noopener"
+          >GitHub ↗</a>
         </div>
         <div class="pilot">
           <label for="callsign">OPERATOR CALLSIGN</label>
@@ -215,6 +221,19 @@ const handleJoinInput = () => {
   font-size: 12px;
   letter-spacing: 2px;
   color: #8a90a0;
+}
+
+.repo {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #8a90a0;
+  text-decoration: none;
+}
+
+.repo:hover {
+  color: #f2f4f8;
 }
 
 .pilot {
