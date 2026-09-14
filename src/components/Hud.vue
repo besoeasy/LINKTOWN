@@ -198,10 +198,10 @@ const cPercent = computed(() => {
           <span class="telem-label">ROOM</span>
           <span class="telem-val text-cyan">{{ roomCode }} {{ copiedToast ? '✓ COPIED' : '📋' }}</span>
         </div>
-        <div v-if="telemetry?.nearestPilot" class="telem-chip contact-chip" title="Nearest Pilot in Sector">
+        <div class="telem-chip contact-chip" title="Nearest pilot within 100m">
           <span class="contact-beacon"></span>
           <span class="telem-label">RADAR</span>
-          <span class="telem-val text-cyan">{{ telemetry.nearestPilot.name }} ({{ telemetry.nearestPilot.distance }}m)</span>
+          <span class="telem-val text-cyan">{{ telemetry?.nearestPilot ? `${telemetry.nearestPilot.name} (${telemetry.nearestPilot.distance}m)` : '—' }}</span>
         </div>
       </div>
 

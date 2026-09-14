@@ -1247,13 +1247,14 @@ export class GameEngine {
     const humanCount = [...this.players.values()].filter(p => !p.isBot).length
     const botCount = [...this.players.values()].filter(p => p.isBot).length
 
-    // Proximity tactical tracker: identify nearest active pilot
+    // Proximity tactical tracker: nearest active pilot within 100m only —
+    // anything further stays hidden so the radar never gives away positions.
     let nearestPilot: { name: string; distance: number; character: CoreId } | undefined = undefined
-    let minD = Infinity
+    let minD = 100
     for (const p of this.players.values()) {
       if (p.id !== this.localPlayer.id && p.alive && !p.invisible) {
         const d = Math.hypot(p.x - this.localPlayer.x, p.z - this.localPlayer.z)
-        if (d < minD) {
+        if (d <= minD) {
           minD = d
           nearestPilot = {
             name: p.name,
