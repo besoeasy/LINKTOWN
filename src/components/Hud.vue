@@ -123,6 +123,10 @@ const isRegenerating = computed(() => {
   return props.player.health < CFG.MAX_HEALTH && regenCooldownRemaining.value <= 0
 })
 
+const regenRate = computed(() => {
+  return (props.player.crouching ? 3 : 1) * CFG.REGEN_RATE
+})
+
 const cTimeRemaining = computed(() => {
   return regenCooldownRemaining.value
 })
@@ -244,7 +248,7 @@ const cPercent = computed(() => {
             REGEN IN {{ regenCooldownRemaining.toFixed(1) }}s
           </span>
           <span v-else-if="isRegenerating" class="hull-regen-badge active">
-            +{{ CFG.REGEN_RATE }}/S REBUILDING
+            +{{ regenRate }}/S REBUILDING
           </span>
           <span class="hull-val">{{ Math.ceil(player.health) }} / {{ CFG.MAX_HEALTH }}</span>
         </div>

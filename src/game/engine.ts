@@ -940,7 +940,9 @@ export class GameEngine {
       // so take the most recent of either clock (lastHitTime is the legacy local fallback).
       const lastDmg = Math.max(p.lastDamageAt ?? 0, p.id === this.localPlayer.id ? this.lastHitTime : 0)
       if (p.health < CFG.MAX_HEALTH && now - lastDmg >= CFG.REGEN_DELAY) {
-        p.health = Math.min(CFG.MAX_HEALTH, p.health + CFG.REGEN_RATE * dt)
+        // Crouched shells rebuild 3x faster — cover is recovery.
+        const rate = (p.crouching ? 3 : 1) * CFG.REGEN_RATE
+        p.health = Math.min(CFG.MAX_HEALTH, p.health + rate * dt)
         if (p.health >= CFG.MAX_HEALTH && p.id === this.localPlayer.id) {
           sound.playCachePickup()
         }
