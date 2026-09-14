@@ -1,3 +1,5 @@
+<img width="2160" height="1350" alt="LT" src="https://github.com/user-attachments/assets/243a1011-47b9-4f48-81e3-59ca961ca182" />
+
 # LINKTOWN
 
 A 3D multiplayer browser game rendered with Three.js.
