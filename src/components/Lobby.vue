@@ -39,12 +39,6 @@ const handleJoinInput = () => {
         <div class="brand">
           <h1>L-TOWN</h1>
           <span class="sub">3049 REMOTE AGE // ATMA CORES</span>
-          <a
-            class="repo"
-            href="https://github.com/besoeasy/LINKTOWN"
-            target="_blank"
-            rel="noopener"
-          >GitHub ↗</a>
         </div>
         <div class="pilot">
           <label for="callsign">OPERATOR CALLSIGN</label>
@@ -65,6 +59,16 @@ const handleJoinInput = () => {
           {{ isConnecting ? 'Connecting…' : 'Connect & play' }}
         </button>
       </div>
+
+      <a
+        class="oss"
+        href="https://github.com/besoeasy/LINKTOWN"
+        target="_blank"
+        rel="noopener"
+      >
+        <span class="oss-title">OPEN SOURCE</span>
+        <span class="oss-sub">This project is open source — view the code and contribute on GitHub ↗</span>
+      </a>
 
       <nav class="tabs">
         <button :class="{ active: activeTab === 'cores' }" @click="activeTab = 'cores'">
@@ -223,17 +227,36 @@ const handleJoinInput = () => {
   color: #8a90a0;
 }
 
-.repo {
-  display: inline-block;
-  margin-top: 4px;
-  font-size: 12px;
-  letter-spacing: 1px;
-  color: #8a90a0;
+.oss {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  border: 1px solid #f2f4f8;
+  border-radius: 6px;
+  padding: 18px 22px;
+  color: #f2f4f8;
   text-decoration: none;
 }
 
-.repo:hover {
-  color: #f2f4f8;
+.oss:hover {
+  background: #f2f4f8;
+  color: #0b0d12;
+}
+
+.oss:hover .oss-sub {
+  color: #0b0d12;
+}
+
+.oss-title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  white-space: nowrap;
+}
+
+.oss-sub {
+  font-size: 14px;
+  color: #aab0c0;
 }
 
 .pilot {
