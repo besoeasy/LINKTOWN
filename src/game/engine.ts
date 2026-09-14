@@ -1225,7 +1225,7 @@ export class GameEngine {
     // Update 3D scene players
     this.scene.updatePlayers([...this.players.values()], this.localPlayer.id)
     const isMoving = this.localPlayer.alive && (!!this.keys['w'] || !!this.keys['s'] || !!this.keys['a'] || !!this.keys['d'])
-    this.scene.render(dt, isMoving, this.localPlayer.superActive, this.localPlayer.shieldActive)
+    this.scene.render(dt, isMoving, this.localPlayer.superActive, this.localPlayer.shieldActive, this.localPlayer.crouching)
 
     // Calculate rolling FPS
     this.frameCount++

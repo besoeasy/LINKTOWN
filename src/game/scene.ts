@@ -864,6 +864,7 @@ export class SceneRenderer {
   private muzzleFlashTime = 0
   private armRecoil = 0
   private armRecoilRot = 0
+  private armRest = 0 // 0 = aim pose, 1 = crouch rest pose (smoothed)
   private bobTimer = 0
   // Nanite hand <-> blaster morph (cosmetic): blaster on shot, hand after 5s idle
   private blasterMorph = 0 // 0 = open hand, 1 = blaster gun
@@ -2747,7 +2748,7 @@ export class SceneRenderer {
     }
   }
 
-  render(dt: number, isMoving = false, superActive = false, shieldActive = false) {
+  render(dt: number, isMoving = false, superActive = false, shieldActive = false, crouching = false) {
     for (const c of this.clouds) {
       c.position.x += (c.userData as any).driftX * dt * 4
       c.position.z += (c.userData as any).driftZ * dt * 4
@@ -2760,13 +2761,23 @@ export class SceneRenderer {
     // Robot Hand recoil recovery & walking bobbing
     this.armRecoil = THREE.MathUtils.lerp(this.armRecoil, 0, dt * 18)
     this.armRecoilRot = THREE.MathUtils.lerp(this.armRecoilRot, 0, dt * 18)
+    // Crouch rest pose: ease the hand down out of the aim line while covered
+    this.armRest = THREE.MathUtils.lerp(this.armRest, crouching ? 1 : 0, Math.min(1, dt * 6))
     if (isMoving) {
       this.bobTimer += dt * 9
     }
-    const bobX = Math.cos(this.bobTimer) * 0.005
-    const bobY = Math.sin(this.bobTimer * 2) * 0.004
-    this.robotArm.position.set(0.28 + bobX, -0.22 + bobY, -0.42 + this.armRecoil)
-    this.robotArm.rotation.set(0.05 - this.armRecoilRot, -0.06, -0.04 + bobX * 2)
+    const bobX = Math.cos(this.bobTimer) * 0.005 * (1 - this.armRest * 0.8)
+    const bobY = Math.sin(this.bobTimer * 2) * 0.004 * (1 - this.armRest * 0.8)
+    this.robotArm.position.set(
+      0.28 + bobX,
+      -0.22 + bobY - this.armRest * 0.09,
+      -0.42 + this.armRecoil + this.armRest * 0.05
+    )
+    this.robotArm.rotation.set(
+      0.05 - this.armRecoilRot + this.armRest * 0.42,
+      -0.06 + this.armRest * 0.10,
+      -0.04 + bobX * 2 - this.armRest * 0.06
+    )
 
     // Muzzle flash duration
     if (this.muzzleFlashTime > 0) {
