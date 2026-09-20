@@ -30,6 +30,10 @@ export const CFG = {
   JUMP_PAD_COOLDOWN_MS: 1200,// Anti-retrigger cooldown per entity (ms)
   JUMP_PAD_LAUNCH_VY: 44,   // Vertical launch velocity (clears ~30u height)
   JUMP_PAD_MOMENTUM_BOOST: 1.5, // Airborne speed multiplier after a pad launch
+  PORTAL_ROLL_MS: 10000,    // Roll for a portal spawn this often
+  PORTAL_CHANCE: 0.5,       // Chance per roll (only when none active)
+  PORTAL_LIFETIME: 10,      // Seconds a portal pair stays open
+  PORTAL_RADIUS: 2.5,       // Step-in trigger radius at each mouth
   JUMP_SPEED: 18,           // Base vertical jump velocity
   GRAVITY: 32,              // Gravity units/sec^2
   SUPER_JUMP_SPEED: 44,     // High jump velocity (~10x height)

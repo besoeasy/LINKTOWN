@@ -44,6 +44,19 @@ export interface JumpPad {
   expiresAt: number
 }
 
+/** Unstable wormhole pair: stepping into either end exits the other. */
+export interface Portal {
+  id: number
+  ax: number
+  ay: number
+  az: number
+  bx: number
+  by: number
+  bz: number
+  createdAt: number
+  expiresAt: number
+}
+
 export interface GameStateMsg {
   type: 'gameState'
   tick: number
@@ -55,6 +68,7 @@ export interface GameStateMsg {
   players: PlayerState[]
   naniteCaches?: NaniteCache[]
   jumpPads?: JumpPad[]
+  portals?: Portal[]
 }
 
 export interface InputMsg {
@@ -160,6 +174,13 @@ export interface JumpPadLaunchMsg {
   z: number
 }
 
+export interface PortalWarpMsg {
+  type: 'portalWarp'
+  x: number
+  y: number
+  z: number
+}
+
 export interface WelcomeMsg {
   type: 'welcome'
   playerId: number
@@ -225,6 +246,7 @@ export type NetMessage =
   | TeleportedMsg
   | CachePickupMsg
   | JumpPadLaunchMsg
+  | PortalWarpMsg
   | WelcomeMsg
   | JoinMsg
   | PingMsg

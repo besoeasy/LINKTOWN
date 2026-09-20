@@ -34,30 +34,14 @@ export interface MapData {
  *
  * One frozen, hand-balanced map so players learn angles, callouts and
  * jump-pad routes (Apex/Farlight style). Playable area is 300x300, ground
- * stays flat (y=0) — height gameplay comes from climbable mesas, overlook
- * decks and an elevated maglev freight line (no terrain deformation, so
- * bots, physics and hitscan all stay exact).
+ * stays flat (y=0) — height gameplay comes from climbable mesas and
+ * overlook decks (no terrain deformation, so bots, physics and hitscan
+ * all stay exact). Unstable wormholes link random map points mid-match.
  */
 export const STATIC_MAP_ID = 'meridian-prime-v2'
 /** Kept on MapData / welcome protocol so old clients stay compatible. */
 export const STATIC_MAP_SEED = 3049
 export const MAP_SIZE = 300
-
-/**
- * Elevated maglev cargo line. Shared by map (guideway statics) and scene
- * (animated cars). Motion is a pure function of match elapsed time so host
- * and P2P clients render the identical train with zero network traffic.
- */
-export const MAGLEV = {
-  z: -100,          // guideway centerline (runs full width along x)
-  railY: 7,         // rail deck height — players fight underneath freely
-  trainY: 8.6,      // car floor height
-  speed: 12,        // units/sec
-  span: 380,        // loop length (pops beyond the walls, inside fog)
-  cars: 6,          // 1 loco + 5 open flatcars
-  carLen: 8,
-  carGap: 10
-} as const
 
 /** Flat arena — pure constant so mesh, physics and spawns always agree. */
 export function groundHeight(_x: number, _z: number, _seed?: number): number {
@@ -269,14 +253,6 @@ export function getStaticMap(): MapData {
     box(dx, 4.0, dz, 6, 0.4, 6, 'platform', 'neutral')
   }
 
-  // ── Maglev guideway (statics; cars are animated by the scene) ──
-  // Twin rails at y=7 plus a pylon every 20m (doubles as lane cover).
-  box(0, MAGLEV.railY, MAGLEV.z - 1.2, MAP_SIZE, 0.5, 0.6, 'platform', 'neutral')
-  box(0, MAGLEV.railY, MAGLEV.z + 1.2, MAP_SIZE, 0.5, 0.6, 'platform', 'neutral')
-  for (let px = -140; px <= 140; px += 20) {
-    box(px, 3.5, MAGLEV.z, 3, 7, 3, 'pillar', 'neutral')
-  }
-
   // Diagonal lane covers — mirrored crates breaking up long sightlines.
   // Kept ≥4m clear of every jump-pad node and spawn point.
   quad(35, 1, 48, 4, 2, 3, 'cover', 'terra')
@@ -327,7 +303,6 @@ export function getStaticMap(): MapData {
     { name: 'NW Nest', x: -95, z: 95 },
     { name: 'SE Nest', x: 95, z: -95 },
     { name: 'SW Nest', x: -95, z: -95 },
-    { name: 'Maglev Line', x: 0, z: -100 },
     { name: 'Ember Mesa', x: 48, z: 78 },
     { name: 'Ash Mesa', x: -48, z: -78 },
     { name: 'Cinder Mesa', x: 78, z: -48 },

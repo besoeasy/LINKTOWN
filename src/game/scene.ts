@@ -6,8 +6,8 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import type { MapData, Box } from './map'
-import { groundHeight, MAGLEV } from './map'
-import type { PlayerState, NaniteCache, JumpPad } from '../net/types'
+import { groundHeight } from './map'
+import type { PlayerState, NaniteCache, JumpPad, Portal } from '../net/types'
 import { CFG, CORE_DETAILS } from './config'
 import { sound } from './audio'
 
@@ -922,8 +922,16 @@ export class SceneRenderer {
   private courtyardShrine?: THREE.Group
   private towerBeaconMesh?: THREE.Mesh
   private boreasPlanet?: THREE.Mesh
-  private maglevTrain?: THREE.Group
-  private maglevCars: THREE.Group[] = []
+  private portalMeshes = new Map<number, {
+    group: THREE.Group
+    endA: THREE.Group
+    endB: THREE.Group
+    ringA: THREE.Mesh
+    ringB: THREE.Mesh
+    matA: THREE.MeshBasicMaterial
+    matB: THREE.MeshBasicMaterial
+    phase: number
+  }>()
   private composer!: EffectComposer
   private bloomPass!: UnrealBloomPass
 
@@ -1809,51 +1817,6 @@ export class SceneRenderer {
     // No dynamic light: pyramid + rings + heart are emissive, shrine reads
     // lit without a per-frame PointLight cost.
     this.scene.add(this.courtyardShrine)
-
-    this.buildMaglevTrain()
-  }
-
-  /**
-   * Open-bed maglev freight consist on the elevated guideway (map statics).
-   * Cars are positioned every frame in render() as a pure function of match
-   * elapsed time — deterministic across host and P2P clients, no netcode.
-   */
-  private buildMaglevTrain() {
-    const train = new THREE.Group()
-    const deckMat = new THREE.MeshStandardMaterial({ color: 0x161d26, roughness: 0.4, metalness: 0.85 })
-    const cargoMat = new THREE.MeshStandardMaterial({ color: 0x3a4659, roughness: 0.55, metalness: 0.6 })
-    const locoMat = new THREE.MeshStandardMaterial({ color: 0x222b38, roughness: 0.3, metalness: 0.9 })
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff })
-
-    for (let i = 0; i < MAGLEV.cars; i++) {
-      const car = new THREE.Group()
-      const deck = new THREE.Mesh(new THREE.BoxGeometry(MAGLEV.carLen, 0.8, 3), deckMat)
-      car.add(deck)
-      if (i === 0) {
-        // Locomotive cab
-        const cab = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 2.8), locoMat)
-        cab.position.set(-1.6, 1.6, 0)
-        car.add(cab)
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(MAGLEV.carLen + 0.1, 0.25, 3.1), glowMat)
-        stripe.position.y = -0.1
-        car.add(stripe)
-      } else {
-        // Open flatcar: two cargo crates + guide glow strip
-        for (const cx of [-1.8, 1.8]) {
-          const crate = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 2.6), cargoMat)
-          crate.position.set(cx, 1.4, 0)
-          car.add(crate)
-        }
-        const stripe = new THREE.Mesh(new THREE.BoxGeometry(MAGLEV.carLen + 0.1, 0.2, 3.1), glowMat)
-        stripe.position.y = -0.2
-        car.add(stripe)
-      }
-      car.position.set(0, MAGLEV.trainY, MAGLEV.z)
-      train.add(car)
-      this.maglevCars.push(car)
-    }
-    this.maglevTrain = train
-    this.scene.add(train)
   }
 
   updatePlayers(players: PlayerState[], localPlayerId: number) {
@@ -2784,6 +2747,75 @@ export class SceneRenderer {
     }
   }
 
+  addPortal(p: Portal) {
+    if (this.portalMeshes.has(p.id)) return
+
+    const group = new THREE.Group()
+    const ringGeo = new THREE.TorusGeometry(1.6, 0.12, 8, 32)
+    const discGeo = new THREE.CircleGeometry(1.35, 24)
+    const baseGeo = new THREE.RingGeometry(1.7, 1.9, 32)
+    const matA = new THREE.MeshBasicMaterial({
+      color: 0xa855f7, transparent: true, opacity: 0.8,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false
+    })
+    const matB = matA.clone()
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xf5d0fe, transparent: true, opacity: 0.45,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false
+    })
+    // Face both rings along the link axis
+    const yaw = Math.atan2(p.bx - p.ax, p.bz - p.az)
+    const mkEnd = (x: number, y: number, z: number, mat: THREE.MeshBasicMaterial) => {
+      const end = new THREE.Group()
+      end.position.set(x, y + 1.6, z)
+      end.rotation.y = yaw
+      const ring = new THREE.Mesh(ringGeo, mat)
+      end.add(ring)
+      const disc = new THREE.Mesh(discGeo, coreMat)
+      end.add(disc)
+      const base = new THREE.Mesh(baseGeo, mat)
+      base.rotation.x = -Math.PI / 2
+      base.position.y = -1.55
+      end.add(base)
+      return { end, ring }
+    }
+    const eA = mkEnd(p.ax, p.ay, p.az, matA)
+    const eB = mkEnd(p.bx, p.by, p.bz, matB)
+    group.add(eA.end, eB.end)
+    this.scene.add(group)
+    this.portalMeshes.set(p.id, {
+      group, endA: eA.end, endB: eB.end,
+      ringA: eA.ring, ringB: eB.ring,
+      matA, matB, phase: Math.random() * Math.PI * 2
+    })
+  }
+
+  removePortal(id: number, withEffect = true) {
+    const p = this.portalMeshes.get(id)
+    if (!p) return
+
+    if (withEffect) {
+      this.spawnImpactSparks(p.endA.position, 0xa855f7)
+      this.spawnImpactSparks(p.endB.position, 0xa855f7)
+    }
+
+    this.scene.remove(p.group)
+    p.group.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry?.dispose()
+        if (Array.isArray(obj.material)) obj.material.forEach((m) => m.dispose())
+        else (obj.material as THREE.Material | undefined)?.dispose()
+      }
+    })
+    this.portalMeshes.delete(id)
+  }
+
+  clearPortals() {
+    for (const [id] of this.portalMeshes) {
+      this.removePortal(id, false)
+    }
+  }
+
   triggerJumpPadEffect(x: number, y: number, z: number) {
     // Kinetic launch shockwave spark burst
     this.spawnImpactSparks(new THREE.Vector3(x, y + 0.4, z), 0x00f0ff)
@@ -2803,7 +2835,12 @@ export class SceneRenderer {
     }
   }
 
-  render(dt: number, isMoving = false, superActive = false, shieldActive = false, crouching = false, matchTime: number = CFG.MATCH_DURATION) {
+  /** Violet arrival burst when a shell exits a wormhole mouth. */
+  portalWarpEffect(x: number, y: number, z: number) {
+    this.spawnImpactSparks(new THREE.Vector3(x, y + 1.2, z), 0xa855f7)
+  }
+
+  render(dt: number, isMoving = false, superActive = false, shieldActive = false, crouching = false) {
     for (const c of this.clouds) {
       c.position.x += (c.userData as any).driftX * dt * 4
       c.position.z += (c.userData as any).driftZ * dt * 4
@@ -2987,14 +3024,13 @@ export class SceneRenderer {
       }
     }
 
-    // Maglev freight: head position loops across the span as a pure
-    // function of match elapsed time (host + clients stay in sync).
-    if (this.maglevCars.length > 0) {
-      const elapsed = CFG.MATCH_DURATION - matchTime
-      const headX = -MAGLEV.span / 2 + ((elapsed * MAGLEV.speed) % MAGLEV.span)
-      for (let i = 0; i < this.maglevCars.length; i++) {
-        this.maglevCars[i].position.x = headX - i * MAGLEV.carGap
-      }
+    // Animate portals (counter-spinning link rings + breathing cores)
+    for (const [, p] of this.portalMeshes) {
+      p.ringA.rotation.z += dt * 2.2
+      p.ringB.rotation.z -= dt * 2.2
+      const pulse = 0.65 + 0.35 * Math.sin(this.shieldTime * 4 + p.phase)
+      p.matA.opacity = 0.55 * pulse + 0.25
+      p.matB.opacity = 0.55 * pulse + 0.25
     }
 
     this.composer.render()
@@ -3004,6 +3040,7 @@ export class SceneRenderer {
     window.removeEventListener('resize', this.onResize)
     this.clearNaniteCaches()
     this.clearJumpPads()
+    this.clearPortals()
     for (const p of this.projectiles) {
       this.scene.remove(p.mesh)
     }
@@ -3012,16 +3049,6 @@ export class SceneRenderer {
       this.scene.remove(s.mesh)
     }
     this.sparks = []
-    if (this.maglevTrain) {
-      this.scene.remove(this.maglevTrain)
-      this.maglevTrain.traverse((obj) => {
-        if (obj instanceof THREE.Mesh) {
-          obj.geometry?.dispose()
-        }
-      })
-      this.maglevTrain = undefined
-      this.maglevCars = []
-    }
     // Dispose remote-player meshes (geometries/materials/textures), otherwise
     // every rematch leaks GPU memory — renderer.dispose() alone does not free those.
     for (const [, grp] of this.playerMeshes) {

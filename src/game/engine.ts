@@ -4,7 +4,7 @@ import { createBoxGrid, resolveCollision, raycastPlayers } from './physics'
 import { spawnBots, tickBots } from './bots'
 import { sound } from './audio'
 import type { SceneRenderer } from './scene'
-import type { PlayerState, NetMessage, KillMsg, HitConfirmMsg, TelemetryData, MatchResults, NaniteCache, CachePickupMsg, JumpPad, JumpPadLaunchMsg } from '../net/types'
+import type { PlayerState, NetMessage, KillMsg, HitConfirmMsg, TelemetryData, MatchResults, NaniteCache, CachePickupMsg, JumpPad, JumpPadLaunchMsg, Portal } from '../net/types'
 import { P2PHost, P2PClient } from '../net/webrtc'
 
 export type GameMode = 'solo' | 'host' | 'client'
@@ -99,6 +99,12 @@ export class GameEngine {
   public jumpPads = new Map<number, JumpPad>()
   private nextJumpPadId = 1
   private lastJumpPadTriggerTime = 0
+  /** Unstable wormhole pairs (max 1 active): 10s roll, 50% chance, 10s life. */
+  public portals = new Map<number, Portal>()
+  private nextPortalId = 1
+  private lastPortalRoll = 0
+  private portalCooldownUntil = 0
+  private remotePortalCooldown = new Map<number, number>()
 
   private pendingSpawns = new Map<number, { x: number; y: number; z: number; yaw: number }>()
   private keys: Record<string, boolean> = {}
@@ -231,6 +237,7 @@ export class GameEngine {
   onPeerDisconnected(peerId: number) {
     this.players.delete(peerId)
     this.remoteShotAt.delete(peerId)
+    this.remotePortalCooldown.delete(peerId)
     this.scene.updatePlayers([...this.players.values()], this.localPlayer.id)
   }
 
@@ -813,6 +820,75 @@ export class GameEngine {
     }
   }
 
+  public spawnPortal(): Portal {
+    const spawns = this.map.spawns
+    const a = spawns[Math.floor(Math.random() * spawns.length)]
+    let b = spawns[Math.floor(Math.random() * spawns.length)]
+    let guard = 0
+    while (b === a && guard++ < 8) {
+      b = spawns[Math.floor(Math.random() * spawns.length)]
+    }
+    const id = this.nextPortalId++
+    const now = Date.now()
+    const portal: Portal = {
+      id,
+      ax: a.x, ay: a.y, az: a.z,
+      bx: b.x, by: b.y, bz: b.z,
+      createdAt: now,
+      expiresAt: now + CFG.PORTAL_LIFETIME * 1000
+    }
+    this.portals.set(id, portal)
+    this.scene.addPortal(portal)
+    sound.playAbility()
+    return portal
+  }
+
+  public syncPortals(remotePortals: Portal[]) {
+    const currentIds = new Set(this.portals.keys())
+    const remoteIds = new Set(remotePortals.map(p => p.id))
+
+    for (const rp of remotePortals) {
+      if (!this.portals.has(rp.id)) {
+        this.portals.set(rp.id, rp)
+        this.scene.addPortal(rp)
+      }
+    }
+
+    for (const id of currentIds) {
+      if (!remoteIds.has(id)) {
+        this.portals.delete(id)
+        this.scene.removePortal(id, false)
+      }
+    }
+  }
+
+  /** Step into one mouth, exit the other. Cooldown stops mouth ping-pong. */
+  private tryPortalWarp() {
+    if (this.portals.size === 0) return
+    const now = Date.now()
+    if (now < this.portalCooldownUntil) return
+    for (const portal of this.portals.values()) {
+      const nearA = Math.hypot(this.localPlayer.x - portal.ax, this.localPlayer.z - portal.az) <= CFG.PORTAL_RADIUS
+        && Math.abs(this.localPlayer.y - portal.ay) <= 2.5
+      const nearB = Math.hypot(this.localPlayer.x - portal.bx, this.localPlayer.z - portal.bz) <= CFG.PORTAL_RADIUS
+        && Math.abs(this.localPlayer.y - portal.by) <= 2.5
+      if (!nearA && !nearB) continue
+      const dst = nearA
+        ? { x: portal.bx, y: portal.by, z: portal.bz }
+        : { x: portal.ax, y: portal.ay, z: portal.az }
+      this.localPlayer.x = dst.x
+      this.localPlayer.y = dst.y
+      this.localPlayer.z = dst.z
+      this.portalCooldownUntil = now + 1500
+      sound.playAbility()
+      this.scene.portalWarpEffect(dst.x, dst.y, dst.z)
+      if (this.mode === 'client') {
+        this.client?.send({ type: 'portalWarp', x: dst.x, y: dst.y, z: dst.z })
+      }
+      break
+    }
+  }
+
   private authoritativeTick() {
     const now = Date.now()
     const dt = CFG.TICK_MS / 1000
@@ -869,6 +945,20 @@ export class GameEngine {
           }
         }
       )
+    }
+
+    // Unstable wormhole roll: every 10s, 50% chance while none active.
+    if (now - this.lastPortalRoll >= CFG.PORTAL_ROLL_MS) {
+      this.lastPortalRoll = now
+      if (this.portals.size === 0 && Math.random() < CFG.PORTAL_CHANCE) {
+        this.spawnPortal()
+      }
+    }
+    for (const [id, portal] of [...this.portals.entries()]) {
+      if (now >= portal.expiresAt) {
+        this.portals.delete(id)
+        this.scene.removePortal(id, true)
+      }
     }
 
     // Maintain active dynamic jump pads (up to CFG.JUMP_PAD_COUNT)
@@ -1017,7 +1107,8 @@ export class GameEngine {
         leaderboard,
         players: [...this.players.values()],
         naniteCaches: [...this.naniteCaches.values()],
-        jumpPads: [...this.jumpPads.values()]
+        jumpPads: [...this.jumpPads.values()],
+        portals: [...this.portals.values()]
       }
       this.host.broadcast(stateMsg)
     }
@@ -1189,6 +1280,9 @@ export class GameEngine {
         }
       }
 
+      // Wormhole transit check (before the camera snaps to the new spot)
+      this.tryPortalWarp()
+
       // Camera position
       const eyeH = this.localPlayer.crouching ? CFG.CROUCH_EYE_HEIGHT : CFG.EYE_HEIGHT
       this.scene.camera.position.set(this.localPlayer.x, this.localPlayer.y + eyeH, this.localPlayer.z)
@@ -1225,7 +1319,7 @@ export class GameEngine {
     const isMoving = this.localPlayer.alive && (!!this.keys['w'] || !!this.keys['s'] || !!this.keys['a'] || !!this.keys['d'])
     // Dead shells drop the first-person arm — the chassis is gone.
     this.scene.setViewmodelVisible(this.localPlayer.alive)
-    this.scene.render(dt, isMoving, this.localPlayer.superActive, this.localPlayer.shieldActive, this.localPlayer.crouching, this.matchTime)
+    this.scene.render(dt, isMoving, this.localPlayer.superActive, this.localPlayer.shieldActive, this.localPlayer.crouching)
 
     // Calculate rolling FPS
     this.frameCount++
@@ -1324,6 +1418,9 @@ export class GameEngine {
       if (msg.jumpPads) {
         this.syncJumpPads(msg.jumpPads)
       }
+      if (msg.portals) {
+        this.syncPortals(msg.portals)
+      }
       this.callbacks.onLeaderboardUpdate(msg.leaderboard)
     } else if (msg.type === 'jumpPadLaunch') {
       this.scene.triggerJumpPadEffect(msg.x, msg.y, msg.z)
@@ -1333,6 +1430,27 @@ export class GameEngine {
       if (this.host) {
         this.host.broadcast(msg)
       }
+    } else if (msg.type === 'portalWarp' && fromId && this.players.has(fromId)) {
+      const p = this.players.get(fromId)!
+      if (!p.alive) return
+      const warpNow = Date.now()
+      if (warpNow < (this.remotePortalCooldown.get(fromId) ?? 0)) return
+      // Exit must be at a real portal mouth — no teleport hacks.
+      let ok = false
+      for (const portal of this.portals.values()) {
+        const dA = Math.hypot(msg.x - portal.ax, msg.z - portal.az)
+        const dB = Math.hypot(msg.x - portal.bx, msg.z - portal.bz)
+        if ((dA <= 6 || dB <= 6) && Math.abs(msg.y - portal.ay) <= 4) {
+          ok = true
+          break
+        }
+      }
+      if (!ok) return
+      p.x = msg.x
+      p.y = msg.y
+      p.z = msg.z
+      this.remotePortalCooldown.set(fromId, warpNow + 1500)
+      this.scene.portalWarpEffect(msg.x, msg.y, msg.z)
     } else if (msg.type === 'cachePickup') {
       this.naniteCaches.delete(msg.cacheId)
       this.scene.removeNaniteCache(msg.cacheId, true)
