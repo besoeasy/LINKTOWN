@@ -136,6 +136,19 @@ const cPercent = computed(() => {
   const elapsed = (CFG.REGEN_DELAY / 1000) - regenCooldownRemaining.value
   return Math.min(100, Math.max(0, (elapsed / (CFG.REGEN_DELAY / 1000)) * 100))
 })
+
+// Death / chassis reprint countdown
+const respawnMs = computed(() => {
+  if (props.player.alive) return 0
+  return Math.max(0, (props.player.respawnAt || 0) - currentTime.value)
+})
+
+const respawnSecs = computed(() => Math.ceil(respawnMs.value / 1000))
+
+const reprintPercent = computed(() => {
+  const total = CFG.RESPAWN_DELAY
+  return Math.min(100, Math.max(0, ((total - respawnMs.value) / total) * 100))
+})
 </script>
 
 <template>
@@ -154,6 +167,19 @@ const cPercent = computed(() => {
         <span class="shield-icon">🛡️</span>
         <span class="shield-title">DEFLECTOR BARRIER ACTIVE</span>
         <span class="shield-time-left">{{ rTimeRemaining.toFixed(1) }}s IMMUNITY</span>
+      </div>
+    </div>
+
+    <!-- Chassis destroyed / reprint overlay -->
+    <div v-if="!player.alive" class="death-overlay">
+      <div class="death-scanlines"></div>
+      <div class="death-panel">
+        <div class="death-title">RX-11 CHASSIS DESTROYED</div>
+        <div class="death-sub">REPRINTING NANITE SHELL…</div>
+        <div class="death-count">{{ respawnSecs }}</div>
+        <div class="death-track">
+          <div class="death-fill" :style="{ width: `${reprintPercent}%` }"></div>
+        </div>
       </div>
     </div>
 
@@ -222,7 +248,7 @@ const cPercent = computed(() => {
     </div>
 
     <!-- Center Crosshair & Hit Markers -->
-    <div class="crosshair-container">
+    <div v-if="player.alive" class="crosshair-container">
       <div class="crosshair" :class="{ 'hit-confirm': hitConfirm.show }">
         <div class="ch-line ch-top"></div>
         <div class="ch-line ch-bottom"></div>
@@ -1013,5 +1039,89 @@ const cPercent = computed(() => {
 @keyframes bannerGlow {
   0% { box-shadow: 0 0 15px rgba(0, 240, 255, 0.4); }
   100% { box-shadow: 0 0 30px rgba(0, 240, 255, 0.7); }
+}
+
+/* Chassis destroyed / reprint overlay */
+.death-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(20, 0, 0, 0.45) 0%, rgba(10, 0, 0, 0.78) 100%);
+  box-shadow: inset 0 0 140px rgba(239, 68, 68, 0.55);
+  animation: deathPulse 1.6s infinite ease-in-out;
+}
+
+.death-scanlines {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(239, 68, 68, 0.06) 0px,
+    rgba(239, 68, 68, 0.06) 1px,
+    transparent 1px,
+    transparent 5px
+  );
+}
+
+.death-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: rgba(11, 8, 10, 0.9);
+  border: 1px solid rgba(239, 68, 68, 0.7);
+  box-shadow: 0 0 35px rgba(239, 68, 68, 0.35);
+  border-radius: 8px;
+  padding: 26px 54px;
+}
+
+.death-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #ef4444;
+  text-shadow: 0 0 14px rgba(239, 68, 68, 0.7);
+}
+
+.death-sub {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.death-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 64px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  text-shadow: 0 0 20px rgba(239, 68, 68, 0.8);
+}
+
+.death-track {
+  width: 240px;
+  height: 8px;
+  margin-top: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.death-fill {
+  height: 100%;
+  background: #ef4444;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.9);
+  transition: width 0.1s linear;
+}
+
+@keyframes deathPulse {
+  0% { opacity: 0.92; }
+  50% { opacity: 1; }
+  100% { opacity: 0.92; }
 }
 </style>

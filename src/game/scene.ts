@@ -2424,6 +2424,11 @@ export class SceneRenderer {
     this.fpShieldTarget = active ? 1 : 0
   }
 
+  /** Hide the FP arm + muzzle when the chassis is destroyed. */
+  setViewmodelVisible(visible: boolean) {
+    if (this.robotArm) this.robotArm.visible = visible
+  }
+
   /** Hit flash on the first-person dome (called when our shield blocks damage). Cosmetic. */
   flashFirstPersonShield() {
     this.fpShieldFlash = 1

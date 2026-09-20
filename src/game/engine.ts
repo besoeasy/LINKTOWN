@@ -1223,6 +1223,8 @@ export class GameEngine {
     // Update 3D scene players
     this.scene.updatePlayers([...this.players.values()], this.localPlayer.id)
     const isMoving = this.localPlayer.alive && (!!this.keys['w'] || !!this.keys['s'] || !!this.keys['a'] || !!this.keys['d'])
+    // Dead shells drop the first-person arm — the chassis is gone.
+    this.scene.setViewmodelVisible(this.localPlayer.alive)
     this.scene.render(dt, isMoving, this.localPlayer.superActive, this.localPlayer.shieldActive, this.localPlayer.crouching)
 
     // Calculate rolling FPS
@@ -1292,6 +1294,7 @@ export class GameEngine {
           this.localPlayer.health = p.health
           this.localPlayer.score = p.score
           this.localPlayer.alive = p.alive
+          this.localPlayer.respawnAt = p.respawnAt ?? 0
           this.localPlayer.superActive = p.superActive
           this.localPlayer.shieldActive = p.shieldActive
           this.localPlayer.invisible = p.invisible
