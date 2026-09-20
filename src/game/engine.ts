@@ -594,7 +594,7 @@ export class GameEngine {
   private shoot() {
     if (!this.localPlayer.alive || this.localPlayer.invisible) return
     const now = Date.now()
-    if (now - this.lastShotTime < 80) return
+    if (now - this.lastShotTime < CFG.FIRE_INTERVAL_MS) return
     if (this.localPlayer.health <= CFG.SHOT_COST_SINGLE) return
 
     this.lastShotTime = now
@@ -1418,10 +1418,10 @@ export class GameEngine {
     } else if (msg.type === 'shoot' && fromId && this.players.has(fromId)) {
       const shooter = this.players.get(fromId)!
       if (!shooter.alive || shooter.invisible) return
-      // Host-side fire-rate limit mirrors the local 80ms gate so packet
+      // Host-side fire-rate limit mirrors the local gate so packet
       // spam cannot buy unlimited DPS.
       const now = Date.now()
-      if (now - (this.remoteShotAt.get(fromId) ?? 0) < 80) return
+      if (now - (this.remoteShotAt.get(fromId) ?? 0) < CFG.FIRE_INTERVAL_MS) return
       this.remoteShotAt.set(fromId, now)
       if (shooter.health <= CFG.SHOT_COST_SINGLE) return
       shooter.health -= CFG.SHOT_COST_SINGLE

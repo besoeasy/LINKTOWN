@@ -16,6 +16,7 @@ export const CFG = {
   REGEN_DELAY: 3000,        // Calm period (no damage taken, no hull spent) before hull rebuild starts
   REGEN_RATE: 1,            // Hull rebuilt per second once the calm period completes
   SHOT_COST_SINGLE: 2,      // Nanite mass spent per single shot
+  FIRE_INTERVAL_MS: 100,    // Min gap between shots (10 shots/sec max)
   CHARGE_MAX: 4,            // Max charge shot bursts
   SUPER_COST: 50,           // Nanite mass spent to trigger Super overclock
   SUPER_DURATION: 10000,    // 10s Super duration
