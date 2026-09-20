@@ -1208,13 +1208,13 @@ export class SceneRenderer {
     }
 
     // Index finger
-    addCyberFinger(0.033, 0.008, -0.138, 0.042, 0.032, -0.06, 1.22)
+    addCyberFinger(0.033, 0.008, -0.138, 0.042, 0.032, -0.06, -1.22)
     // Middle finger
-    addCyberFinger(0.011, 0.011, -0.140, 0.046, 0.036, -0.03, 1.28)
+    addCyberFinger(0.011, 0.011, -0.140, 0.046, 0.036, -0.03, -1.28)
     // Ring finger
-    addCyberFinger(-0.011, 0.010, -0.139, 0.043, 0.033, -0.04, 1.28)
+    addCyberFinger(-0.011, 0.010, -0.139, 0.043, 0.033, -0.04, -1.28)
     // Pinky finger
-    addCyberFinger(-0.033, 0.007, -0.136, 0.036, 0.026, -0.09, 1.20)
+    addCyberFinger(-0.033, 0.007, -0.136, 0.036, 0.026, -0.09, -1.20)
 
     // 6. Articulated Cybernetic Opposable Thumb
     this.thumbBaseGroup = new THREE.Group()
@@ -2390,8 +2390,8 @@ export class SceneRenderer {
 
     // 2. Articulated fingers:
     // Hand mode: relaxed, spread, ergonomic curl
-    // Blaster mode: proximal curls tight around barrel cowling (~1.25 rad),
-    // and distal phalanx curls inward (~0.95 rad) creating a robotic magnetic clamp
+    // Blaster mode: proximal curls down tight around barrel cowling (~-1.25 rad),
+    // and distal phalanx curls inward (~-0.95 rad) creating a robotic magnetic clamp
     for (let i = 0; i < this.fingerGroups.length; i++) {
       const g = this.fingerGroups[i]
       g.rotation.x = THREE.MathUtils.lerp(this.fingerHandRotX[i], this.fingerBlasterRotX[i], m)
@@ -2401,7 +2401,7 @@ export class SceneRenderer {
       // Distal phalanx secondary curling
       const dg = this.fingerDistalGroups[i]
       if (dg) {
-        dg.rotation.x = THREE.MathUtils.lerp(0.12, 0.95, m)
+        dg.rotation.x = THREE.MathUtils.lerp(0.12, -0.95, m)
       }
     }
 
