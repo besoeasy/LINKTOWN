@@ -1,0 +1,165 @@
+name: Release
+
+# Manual date-based release: Actions tab -> Release -> Run workflow.
+# Optionally pass a custom tag (e.g. 2026.09.20). Otherwise today's
+# UTC date is used (YYYY.MM.DD), auto-suffixed (.1, .2, ...) if taken.
+# One run builds the web client, deploys GitHub Pages, publishes the
+# Docker image (ghcr.io latest + release tag, cosigned), and creates
+# the GitHub release. Retention: newest 60 releases kept, oldest pruned.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Custom release tag (default: YYYY.MM.DD)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pages: write
+  packages: write
+  id-token: write
+
+# Serialize releases so two runs never claim the same date tag.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve release tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="$(date -u +%Y.%m.%d)"
+          fi
+          base="$TAG"
+          n=1
+          while git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; do
+            n=$((n + 1))
+            TAG="${base}.${n}"
+          done
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: $TAG"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web client
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3.5.0
+        with:
+          cosign-release: "v2.2.4"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.0.0
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v3.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ steps.tag.outputs.tag }}
+
+      - name: Build and push Docker image
+        id: build-and-push
+        uses: docker/build-push-action@v5.0.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Sign the published Docker image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build-and-push.outputs.digest }}
+        run: echo "${TAGS}" | xargs -I {} cosign sign --yes {}@${DIGEST}
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -e
+          git fetch origin main --tags
+          SHA="$(git rev-parse origin/main)"
+          PREV="$(git describe --tags --abbrev=0 "$SHA" 2>/dev/null || true)"
+          if [ -n "$PREV" ]; then
+            NOTES="$(git log --format='- %h %s' "${PREV}..${SHA}")"
+          else
+            NOTES="$(git log --format='- %h %s' -10 "$SHA")"
+          fi
+          gh release create "$TAG" --target "$SHA" --title "$TAG" --notes "$NOTES"
+
+      - name: Prune old releases (keep newest $KEEP)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEEP: 60
+        run: |
+          set -e
+          [[ "$KEEP" =~ ^[0-9]+$ ]] || { echo "Invalid KEEP: $KEEP" >&2; exit 1; }
+          mapfile -t OLD < <(gh release list --limit 1000 --json tagName,createdAt,isDraft \
+            --jq --argjson keep "$KEEP" '
+              map(select(.isDraft | not))
+              | sort_by(.createdAt)
+              | if length > $keep then .[0:(length - $keep)][].tagName else empty end') || true
+          if [ "${#OLD[@]}" -eq 0 ]; then
+            echo "Release count within retention ($KEEP); nothing to prune."
+            exit 0
+          fi
+          echo "Pruning ${#OLD[@]} release(s) older than newest $KEEP:"
+          printf '  %s\n' "${OLD[@]}"
+          for t in "${OLD[@]}"; do
+            gh release delete "$t" --yes --cleanup-tag
+          done
