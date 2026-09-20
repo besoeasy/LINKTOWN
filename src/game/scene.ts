@@ -1308,8 +1308,8 @@ export class SceneRenderer {
     skyU['mieCoefficient'].value = 0.002
     skyU['mieDirectionalG'].value = 0.65
 
-    // Sun direction aligned with primary sun directional light (high clear daylight angle)
-    const sunPos = new THREE.Vector3(120, 220, 80).normalize()
+    // Sun direction aligned with primary sun directional light (late-afternoon angle)
+    const sunPos = new THREE.Vector3(170, 95, 55).normalize()
     skyU['sunPosition'].value.copy(sunPos)
   }
 
@@ -1321,7 +1321,7 @@ export class SceneRenderer {
     // Direct warm sun with crisp soft shadows. Frustum fits the 240m arena
     // (±160 with margin) so the 2048 shadow map stays sharp.
     const sun = new THREE.DirectionalLight(0xfffaed, 2.4)
-    sun.position.set(120, 220, 80)
+    sun.position.set(170, 95, 55)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
     sun.shadow.camera.near = 1
