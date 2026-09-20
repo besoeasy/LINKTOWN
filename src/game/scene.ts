@@ -915,10 +915,8 @@ export class SceneRenderer {
   private waterTexture?: THREE.CanvasTexture
   private holoMaterials: THREE.MeshBasicMaterial[] = []
   private courtyardShrine?: THREE.Group
-  private towerBeacon?: THREE.PointLight
+  private towerBeaconMesh?: THREE.Mesh
   private boreasPlanet?: THREE.Mesh
-  private streetlampLights: THREE.PointLight[] = []
-  private plazaLight?: THREE.PointLight
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene()
@@ -1290,17 +1288,18 @@ export class SceneRenderer {
     const hemi = new THREE.HemisphereLight(0xe8f4ff, 0x889966, 1.1)
     this.scene.add(hemi)
 
-    // Direct warm sun with crisp soft shadows
+    // Direct warm sun with crisp soft shadows. Frustum fits the 240m arena
+    // (±160 with margin) so the 2048 shadow map stays sharp.
     const sun = new THREE.DirectionalLight(0xfffaed, 2.4)
     sun.position.set(120, 220, 80)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
     sun.shadow.camera.near = 1
     sun.shadow.camera.far = 1200
-    sun.shadow.camera.left = -600
-    sun.shadow.camera.right = 600
-    sun.shadow.camera.top = 600
-    sun.shadow.camera.bottom = -600
+    sun.shadow.camera.left = -160
+    sun.shadow.camera.right = 160
+    sun.shadow.camera.top = 160
+    sun.shadow.camera.bottom = -160
     sun.shadow.bias = -0.00005
     sun.shadow.normalBias = 0.03
     this.scene.add(sun)
@@ -1735,10 +1734,7 @@ export class SceneRenderer {
     const beaconMesh = new THREE.Mesh(beaconGeo, beaconMat)
     beaconMesh.position.set(0, 15.3, 0)
     spireGroup.add(beaconMesh)
-
-    this.towerBeacon = new THREE.PointLight(0xff2244, 3.5, 55, 1.6)
-    this.towerBeacon.position.set(0, 35.0, 0)
-    this.scene.add(this.towerBeacon)
+    this.towerBeaconMesh = beaconMesh
     this.scene.add(spireGroup)
 
     // 6. Courtyard First-Chassis Memorial Shrine (Lore: sacred marked soil of first remote link)
@@ -1778,32 +1774,9 @@ export class SceneRenderer {
     ring2.rotation.x = -Math.PI * 0.32
     ring2.rotation.z = Math.PI * 0.25
     this.courtyardShrine.add(ring2)
-
-    const shrineLight = new THREE.PointLight(0x00f0ff, 2.8, 18, 1.6)
-    this.courtyardShrine.add(shrineLight)
+    // No dynamic light: pyramid + rings + heart are emissive, shrine reads
+    // lit without a per-frame PointLight cost.
     this.scene.add(this.courtyardShrine)
-
-    // 7. Streetlamp Point Lights & Plaza Entrance Lighting
-    const lampCoords: [number, number, number][] = [
-      [-4, 30, 1],
-      [4, 30, -1],
-      [-4, 57, 1],
-      [4, 57, -1],
-      [-4, -30, 1],
-      [4, -30, -1],
-      [-4, -57, 1],
-      [4, -57, -1]
-    ]
-    for (const [lx, lz, arm] of lampCoords) {
-      const lampLight = new THREE.PointLight(0xffdf80, 2.2, 24, 1.8)
-      lampLight.position.set(lx + arm * 2.5, 9.2, lz)
-      this.scene.add(lampLight)
-      this.streetlampLights.push(lampLight)
-    }
-
-    this.plazaLight = new THREE.PointLight(0x00f0ff, 3.2, 28, 1.6)
-    this.plazaLight.position.set(0, 5.2, 11.5)
-    this.scene.add(this.plazaLight)
   }
 
   updatePlayers(players: PlayerState[], localPlayerId: number) {
@@ -2890,8 +2863,9 @@ export class SceneRenderer {
       this.courtyardShrine.position.y = 3.8 + Math.sin(this.shieldTime * 2.0) * 0.09
     }
 
-    if (this.towerBeacon) {
-      this.towerBeacon.intensity = Math.sin(this.shieldTime * 6) > 0.35 ? 3.5 : 0.2
+    if (this.towerBeaconMesh) {
+      // Blink the emissive beacon mesh (no dynamic light needed)
+      this.towerBeaconMesh.visible = Math.sin(this.shieldTime * 6) > -0.6
     }
 
     if (this.boreasPlanet) {
@@ -2946,10 +2920,6 @@ export class SceneRenderer {
       this.scene.remove(s.mesh)
     }
     this.sparks = []
-    for (const l of this.streetlampLights) {
-      this.scene.remove(l)
-    }
-    this.streetlampLights = []
     // Dispose remote-player meshes (geometries/materials/textures), otherwise
     // every rematch leaks GPU memory — renderer.dispose() alone does not free those.
     for (const [, grp] of this.playerMeshes) {
@@ -2964,8 +2934,6 @@ export class SceneRenderer {
       })
     }
     this.playerMeshes.clear()
-    if (this.plazaLight) this.scene.remove(this.plazaLight)
-    if (this.towerBeacon) this.scene.remove(this.towerBeacon)
     this.renderer.dispose()
   }
 }
