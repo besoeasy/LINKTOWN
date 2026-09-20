@@ -1,5 +1,10 @@
 import * as THREE from 'three'
 import { Sky } from 'three/addons/objects/Sky.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import type { MapData, Box } from './map'
 import { groundHeight } from './map'
 import type { PlayerState, NaniteCache, JumpPad } from '../net/types'
@@ -917,6 +922,8 @@ export class SceneRenderer {
   private courtyardShrine?: THREE.Group
   private towerBeaconMesh?: THREE.Mesh
   private boreasPlanet?: THREE.Mesh
+  private composer!: EffectComposer
+  private bloomPass!: UnrealBloomPass
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene()
@@ -937,6 +944,28 @@ export class SceneRenderer {
     this.renderer.toneMappingExposure = 1.25
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
+    // Image-based lighting: neutral studio env for PBR reflections on
+    // metals/armor. Kept subtle so the daylight art direction stays intact.
+    const pmrem = new THREE.PMREMGenerator(this.renderer)
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+    this.scene.environmentIntensity = 0.35
+    pmrem.dispose()
+
+    // Post stack: HDR render -> subtle bloom (emissives only) -> tonemap/sRGB.
+    // MSAA target keeps edges crisp since the canvas AA is bypassed.
+    const size = new THREE.Vector2(window.innerWidth, window.innerHeight)
+    const msaaTarget = new THREE.WebGLRenderTarget(size.x, size.y, {
+      type: THREE.HalfFloatType,
+      samples: 4
+    })
+    this.composer = new EffectComposer(this.renderer, msaaTarget)
+    this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
+    this.composer.setSize(size.x, size.y)
+    this.composer.addPass(new RenderPass(this.scene, this.camera))
+    this.bloomPass = new UnrealBloomPass(size, 0.35, 0.55, 0.85)
+    this.composer.addPass(this.bloomPass)
+    this.composer.addPass(new OutputPass())
+
     this.setupSky()
     this.setupLighting()
     this.setupCosmos()
@@ -954,6 +983,7 @@ export class SceneRenderer {
     this.camera.aspect = window.innerWidth / window.innerHeight
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(window.innerWidth, window.innerHeight)
+    this.composer.setSize(window.innerWidth, window.innerHeight)
   }
 
   private setupRobotArm() {
@@ -2905,7 +2935,7 @@ export class SceneRenderer {
       }
     }
 
-    this.renderer.render(this.scene, this.camera)
+    this.composer.render()
   }
 
   destroy() {
@@ -2934,6 +2964,7 @@ export class SceneRenderer {
       })
     }
     this.playerMeshes.clear()
+    this.composer.dispose()
     this.renderer.dispose()
   }
 }
