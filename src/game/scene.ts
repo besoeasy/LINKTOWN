@@ -941,7 +941,7 @@ export class SceneRenderer {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.25
+    this.renderer.toneMappingExposure = 1.1
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
     // Image-based lighting: neutral studio env for PBR reflections on
@@ -962,7 +962,7 @@ export class SceneRenderer {
     this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     this.composer.setSize(size.x, size.y)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.bloomPass = new UnrealBloomPass(size, 0.35, 0.55, 0.85)
+    this.bloomPass = new UnrealBloomPass(size, 0.35, 0.55, 1.0)
     this.composer.addPass(this.bloomPass)
     this.composer.addPass(new OutputPass())
 
@@ -1304,7 +1304,7 @@ export class SceneRenderer {
 
     const skyU = sky.material.uniforms as any
     skyU['turbidity'].value = 2.5
-    skyU['rayleigh'].value = 1.5
+    skyU['rayleigh'].value = 0.9
     skyU['mieCoefficient'].value = 0.005
     skyU['mieDirectionalG'].value = 0.8
 
