@@ -1,4 +1,5 @@
 import type { NetMessage, PlayerState, GameStateMsg } from './types'
+import { STATIC_MAP_SEED } from '../game/map'
 
 export interface PeerConnection {
   id: number
@@ -75,7 +76,7 @@ export class P2PHost {
     return !!peer?.dc && peer.dc.readyState === 'open'
   }
 
-  public seed = 12345
+  public seed = STATIC_MAP_SEED
   private spawnProvider?: (playerId: number) => { x: number; y: number; z: number; yaw?: number }
 
   setSeed(seed: number) {

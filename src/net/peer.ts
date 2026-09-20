@@ -1,7 +1,7 @@
 import { Peer, type DataConnection } from 'peerjs'
 import type { NetMessage, WelcomeMsg } from './types'
 import { getRandomSpawn } from '../game/engine'
-import { generateMap } from '../game/map'
+import { generateMap, STATIC_MAP_SEED } from '../game/map'
 
 // Public PeerJS Cloud broker + Google/Twilio STUN + OpenRelay TURN
 export const PEERJS_CONFIG = {
@@ -32,7 +32,7 @@ export function generateRoomCode(): string {
 export class PeerJSHost {
   public peers = new Map<number, DataConnection>()
   private nextPlayerId = 2
-  public seed = 12345
+  public seed = STATIC_MAP_SEED
   public peer: Peer | null = null
   public roomCode: string
   public isOpen = false

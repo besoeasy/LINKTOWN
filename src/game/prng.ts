@@ -1,4 +1,6 @@
-// Mulberry32 seeded pseudo-random number generator
+// Mulberry32 seeded pseudo-random number generator (kept for gameplay
+// randomness like bot wander / recoil — NOT for map layout anymore;
+// the arena is the static MERIDIAN PRIME in game/map.ts).
 export function makePRNG(seed: number) {
   let s = (seed >>> 0) || 1
   return function next(): number {
@@ -7,10 +9,4 @@ export function makePRNG(seed: number) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
-}
-
-export function getDailySeed(): number {
-  const d = new Date()
-  const str = `${String(d.getDate()).padStart(2, '0')}${String(d.getMonth() + 1).padStart(2, '0')}${d.getFullYear()}`
-  return parseInt(str, 10) >>> 0
 }

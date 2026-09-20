@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import type { CoreId } from './game/config'
-import { getDailySeed } from './game/prng'
+import { STATIC_MAP_SEED } from './game/map'
 import { SceneRenderer } from './game/scene'
 import { GameEngine } from './game/engine'
 import type { PlayerState, KillMsg, HitConfirmMsg, TelemetryData, MatchResults } from './net/types'
@@ -270,7 +270,7 @@ const handlePlayAgain = () => {
   isGameOver.value = false
   matchResults.value = null
   withdrawHostedRoom()
-  const seed = engine?.map?.seed ?? getDailySeed()
+  const seed = engine?.map?.seed ?? STATIC_MAP_SEED
   engine?.destroy()
   if (currentMatchMode === 'solo') {
     startSolo()
@@ -316,7 +316,7 @@ const createPeerRoom = () => {
   if (typeof window !== 'undefined') {
     window.location.hash = `room=${code}`
   }
-  const seed = getDailySeed()
+  const seed = STATIC_MAP_SEED
   p2pStatus.value = `HOSTING (ROOM: ${code})`
 
   peerHost = new PeerJSHost(
@@ -387,13 +387,13 @@ const joinPeerRoom = (code: string) => {
 
 // 1. Launch Solo Mode with Bots
 const startSolo = () => {
-  const seed = getDailySeed()
+  const seed = STATIC_MAP_SEED
   initEngine(seed, 'solo')
 }
 
 // 2. Host LAN via simple Host Address
 const hostLan = async () => {
-  const seed = getDailySeed()
+  const seed = STATIC_MAP_SEED
   p2pHost = new P2PHost(
     (msg, fromId) => engine?.handleNetworkMessage(msg, fromId),
     (peer) => {
@@ -462,7 +462,7 @@ const hostLan = async () => {
 }
 
 const startHostMatch = () => {
-  const seed = getDailySeed()
+  const seed = STATIC_MAP_SEED
   lanModal.value.show = false
   initEngine(seed, 'host')
   engine?.setHostNetwork(p2pHost!)
@@ -497,7 +497,7 @@ const handleJoinLan = async (hostAddress: string) => {
             return
           }
           lanModal.value.show = false
-          initEngine(msg.seed || getDailySeed(), 'client')
+          initEngine(msg.seed ?? STATIC_MAP_SEED, 'client')
           engine?.setClientNetwork(p2pClient!)
         } else if (msg.type === 'ice_candidate' && msg.candidate) {
           p2pClient!.addIceCandidate(msg.candidate)

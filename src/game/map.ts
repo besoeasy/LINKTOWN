@@ -1,5 +1,3 @@
-import { makePRNG } from './prng'
-
 export interface Box {
   x: number
   y: number
@@ -17,79 +15,77 @@ export interface Spawn {
   z: number
 }
 
+export interface Poi {
+  name: string
+  x: number
+  z: number
+}
+
 export interface MapData {
   floor: { w: number; d: number }
   boxes: Box[]
   spawns: Spawn[]
-  pois: any[]
+  pois: Poi[]
   seed: number
 }
 
-/** Deterministic 0..1 hash for seed-derived terrain phases. */
-function hash01(seed: number, i: number): number {
-  const h = Math.sin(seed * 127.1 + i * 311.7) * 43758.5453
-  return h - Math.floor(h)
-}
-
 /**
- * Rolling terrain height. Dead flat inside the central arena (r < 115, where
- * all handcrafted structures, roads and ponds sit), ramping up to varied
- * hills and ridges (max ~6u, slopes ~0.08) across the outer scatter zone.
- * Pure function of world (x, z) + seed — shared by mesh, physics and spawns.
+ * MERIDIAN PRIME — static competitive arena (v1).
+ *
+ * Replaces the old seeded scatter generator. One frozen, hand-balanced map
+ * so players learn angles, callouts and jump-pad routes (Apex/Farlight style).
+ * Playable area is 240x240, fully flat (y=0) — no rolling terrain.
  */
-export function groundHeight(x: number, z: number, seed: number): number {
-  const d = Math.hypot(x, z)
-  if (d < 115) return 0
-  const t = Math.min(1, (d - 115) / 70)
-  const s = t * t * (3 - 2 * t)
-  const p1 = hash01(seed, 1) * Math.PI * 2
-  const p2 = hash01(seed, 2) * Math.PI * 2
-  const p3 = hash01(seed, 3) * Math.PI * 2
-  const p4 = hash01(seed, 4) * Math.PI * 2
-  const h =
-    Math.sin(x * 0.018 + p1) * Math.cos(z * 0.021 + p2) * 3.2 +
-    Math.sin((x + z) * 0.009 + p3) * 2.0 +
-    Math.sin(x * 0.045 + p2) * Math.cos(z * 0.05 + p1) * 0.9 +
-    Math.sin((x - z) * 0.03 + p4) * 0.8
-  return h * s
+export const STATIC_MAP_ID = 'meridian-prime-v1'
+/** Kept on MapData / welcome protocol so old clients stay compatible. */
+export const STATIC_MAP_SEED = 3049
+export const MAP_SIZE = 240
+
+/** Flat arena — pure constant so mesh, physics and spawns always agree. */
+export function groundHeight(_x: number, _z: number, _seed?: number): number {
+  return 0
 }
 
-export function generateMap(seed: number): MapData {
-  const rng = makePRNG(seed)
-  const SIZE = 750
-  const HALF = SIZE / 2
+export function getStaticMap(): MapData {
   const boxes: Box[] = []
   const spawns: Spawn[] = []
+  const SIZE = MAP_SIZE
+  const HALF = SIZE / 2
 
-  function box(x: number, y: number, z: number, w: number, h: number, d: number, type = 'cover', biome = 'neutral') {
+  function box(
+    x: number, y: number, z: number,
+    w: number, h: number, d: number,
+    type = 'cover', biome = 'neutral'
+  ) {
     boxes.push({ x, y, z, w, h, d, type, biome })
   }
 
-  function tieredCover(r: number) {
-    if (r < 0.25) return { h: 0.7 + rng() * 0.35, w: 2 + rng() * 3.5 }
-    if (r < 0.60) return { h: 1.4 + rng() * 0.8, w: 2 + rng() * 4.5 }
-    return { h: 2.5 + rng() * 2.5, w: 2 + rng() * 6 }
+  /** Mirror a box across both axes for symmetric fair fights. */
+  function quad(
+    x: number, y: number, z: number,
+    w: number, h: number, d: number,
+    type = 'cover', biome = 'neutral'
+  ) {
+    box(x, y, z, w, h, d, type, biome)
+    box(-x, y, z, w, h, d, type, biome)
+    box(x, y, -z, w, h, d, type, biome)
+    box(-x, y, -z, w, h, d, type, biome)
   }
 
-  const groundAt = (x: number, z: number) => groundHeight(x, z, seed)
-  const spawnY = (x: number, z: number) => groundAt(x, z) + 1.6
-
-  // Outer perimeter boundary walls (extended down so hills never expose a gap)
-  const wH = 12
-  const wT = 2
+  // ── Perimeter boundary walls ──────────────────────────────
+  const wH = 12, wT = 2
   box(0, 3, -HALF, SIZE, wH + 6, wT, 'wall', 'neutral')
   box(0, 3, HALF, SIZE, wH + 6, wT, 'wall', 'neutral')
   box(-HALF, 3, 0, wT, wH + 6, SIZE, 'wall', 'neutral')
   box(HALF, 3, 0, wT, wH + 6, SIZE, 'wall', 'neutral')
 
-  // 5-Floor Central Meridian Hub / Office Building
+  // ── 5-floor Central Meridian Hub ──────────────────────────
   const FLOORS = 5
   const FH = 3.8
   const BLDG_H = FLOORS * FH
   box(0, BLDG_H / 2, 0, 20, BLDG_H, 15, 'house_body', 'neutral')
   box(0, BLDG_H / 2, 7.6, 16, BLDG_H, 0.4, 'house_window', 'neutral')
   box(0, BLDG_H / 2, -7.6, 16, BLDG_H, 0.4, 'house_window', 'neutral')
-
   for (let f = 0; f < FLOORS; f++) {
     const wy = (f + 0.55) * FH
     box(-10.2, wy, -1, 0.3, FH * 0.58, 5.5, 'house_window', 'neutral')
@@ -105,7 +101,7 @@ export function generateMap(seed: number): MapData {
   box(5, BLDG_H + 1.6, -1, 5, 1.8, 3.5, 'cover', 'neutral')
   box(0, BLDG_H + 1.3, 4, 3, 1.4, 2.5, 'house_chimney', 'neutral')
 
-  // Entrance & plaza platforms
+  // ── Entrance & plaza platforms ───────────────────────────
   box(0, 0.05, 10.5, 16, 0.1, 5, 'path', 'neutral')
   box(0, FH - 0.1, 10.8, 16, 0.35, 4.8, 'platform', 'neutral')
   box(-3.2, FH * 0.42, 7.7, 3.0, FH * 0.78, 0.3, 'house_door', 'neutral')
@@ -117,37 +113,26 @@ export function generateMap(seed: number): MapData {
   box(-9, 0.45, 11, 4, 0.9, 2.5, 'garden', 'neutral')
   box(9, 0.45, 11, 4, 0.9, 2.5, 'garden', 'neutral')
 
-  // Courtyard & surrounding fortifications
+  // ── Courtyard fortifications (N/S/E/W gates) ─────────────
   const BH = 22, WT = 2, WH = 14, DW = 4, DH = 5
   box(-13, WH / 2, -BH, 18, WH, WT, 'building', 'neutral')
   box(13, WH / 2, -BH, 18, WH, WT, 'building', 'neutral')
   box(0, DH + (WH - DH) / 2, -BH, DW * 2, WH - DH, WT, 'building', 'neutral')
-
   box(-13, WH / 2, BH, 18, WH, WT, 'building', 'neutral')
   box(13, WH / 2, BH, 18, WH, WT, 'building', 'neutral')
   box(0, DH + (WH - DH) / 2, BH, DW * 2, WH - DH, WT, 'building', 'neutral')
-
   box(BH, WH / 2, -13, WT, WH, 18, 'building', 'neutral')
   box(BH, WH / 2, 13, WT, WH, 18, 'building', 'neutral')
   box(BH, DH + (WH - DH) / 2, 0, WT, WH - DH, DW * 2, 'building', 'neutral')
-
   box(-BH, WH / 2, -13, WT, WH, 18, 'building', 'neutral')
   box(-BH, WH / 2, 13, WT, WH, 18, 'building', 'neutral')
   box(-BH, DH + (WH - DH) / 2, 0, WT, WH - DH, DW * 2, 'building', 'neutral')
-
   // Corner towers
-  box(-BH, WH / 2, -BH, 4, WH, 4, 'building', 'neutral')
-  box(BH, WH / 2, -BH, 4, WH, 4, 'building', 'neutral')
-  box(-BH, WH / 2, BH, 4, WH, 4, 'building', 'neutral')
-  box(BH, WH / 2, BH, 4, WH, 4, 'building', 'neutral')
-
+  quad(BH, WH / 2, BH, 4, WH, 4, 'building', 'neutral')
   box(0, WH + 0.5, 0, BH * 2 + 2, 1, BH * 2 + 2, 'platform', 'neutral')
-  box(-14, WH / 2, -14, 2.5, WH, 2.5, 'pillar', 'neutral')
-  box(14, WH / 2, -14, 2.5, WH, 2.5, 'pillar', 'neutral')
-  box(-14, WH / 2, 14, 2.5, WH, 2.5, 'pillar', 'neutral')
-  box(14, WH / 2, 14, 2.5, WH, 2.5, 'pillar', 'neutral')
+  quad(14, WH / 2, 14, 2.5, WH, 2.5, 'pillar', 'neutral')
 
-  // Central tactical cover
+  // ── Central tactical cover ───────────────────────────────
   box(8, 1, -8, 4, 2, 3, 'cover', 'neutral')
   box(-8, 1, 8, 3, 2, 4, 'cover', 'neutral')
   box(-8, 1, -8, 3, 2, 3, 'cover', 'neutral')
@@ -158,7 +143,7 @@ export function generateMap(seed: number): MapData {
   box(16, 3.5, -5, 4, 3, 4, 'cover', 'neutral')
   box(16, 7, -11, 4, 2, 4, 'cover', 'neutral')
 
-  // Roads & markings
+  // ── North/South avenues ──────────────────────────────────
   box(0, 0.05, 45, 6.5, 0.1, 70, 'path', 'neutral')
   box(0, 0.05, -45, 6.5, 0.1, 70, 'path', 'neutral')
   for (let pz = 17; pz < 82; pz += 5) box(0, 0.1, pz, 0.28, 0.015, 2.2, 'road_marking', 'neutral')
@@ -168,7 +153,7 @@ export function generateMap(seed: number): MapData {
     box(side * 3.6, 0.12, -45, 0.5, 0.24, 70, 'platform', 'neutral')
   }
 
-  // Streetlamps & bollards
+  // ── Streetlamps & bollards ───────────────────────────────
   for (const [lx, lz, arm] of [
     [-4, 30, 1], [4, 30, -1], [-4, 57, 1], [4, 57, -1],
     [-4, -30, 1], [4, -30, -1], [-4, -57, 1], [4, -57, -1]
@@ -182,7 +167,7 @@ export function generateMap(seed: number): MapData {
     box(4.6, 0.55, pz, 0.38, 1.1, 0.38, 'bollard', 'neutral')
   }
 
-  // Plaza fountain & benches
+  // ── Plaza fountain & benches ─────────────────────────────
   box(0, 0.5, 17, 8, 1, 8, 'fountain_base', 'neutral')
   box(0, 1.2, 17, 6, 0.4, 6, 'fountain_rim', 'neutral')
   box(0, 1.5, 17, 1.5, 3, 1.5, 'fountain_pillar', 'neutral')
@@ -193,139 +178,109 @@ export function generateMap(seed: number): MapData {
     box(bx, 1.5, bz - bd * 0.3, bw, 1.5, 0.3, 'bench', 'neutral')
   }
 
-  // Procedural scatter over the 750x750 perimeter
-  for (let i = 0; i < 360; i++) {
-    const x = (rng() - 0.5) * (SIZE - 30)
-    const z = (rng() - 0.5) * (SIZE - 30)
-    const dc = Math.sqrt(x * x + z * z)
-    if (dc < 105) continue
-    if (dc < 195 && rng() < 0.68) continue
-    const biome = x > 5 ? 'terra' : x < -5 ? 'barren' : 'neutral'
-    const { h, w } = tieredCover(rng())
-    // Bury the base 1.5u so slope never floats a slab; gameplay top stays at h
-    const gh = groundAt(x, z)
-    box(x, gh + h / 2 - 0.75, z, w, h + 1.5, w * (0.5 + rng() * 1.0), 'cover', biome)
-  }
-  for (let i = 0; i < 90; i++) {
-    const x = (rng() - 0.5) * (SIZE - 40)
-    const z = (rng() - 0.5) * (SIZE - 40)
-    if (Math.sqrt(x * x + z * z) < 84) continue
-    const biome = x > 0 ? 'terra' : 'barren'
-    const h = 10 + rng() * 22, w = 1.5 + rng() * 2.5
-    const gh = groundAt(x, z)
-    box(x, gh + h / 2 - 2, z, w, h + 4, w, 'pillar', biome)
-  }
-  for (let i = 0; i < 75; i++) {
-    const x = (rng() - 0.5) * (SIZE - 50)
-    const z = (rng() - 0.5) * (SIZE - 50)
-    if (Math.sqrt(x * x + z * z) < 75) continue
-    const biome = x > 0 ? 'terra' : 'barren'
-    const elev = 4 + rng() * 7, pw = 7 + rng() * 14, pd = 7 + rng() * 14
-    const gh = groundAt(x, z)
-    box(x, gh + elev + 0.5, z, pw, 1.2, pd, 'platform', biome)
-    box(x, gh + elev / 2 - 1, z, 1.2, elev + 2, 1.2, 'pillar', biome)
-  }
-
-  // Hideouts (each founded on the terrain height at its center; ground-based
-  // walls extend 1.5u underground so slopes never float them)
-  function buildHideout(hx: number, hz: number, biome: string) {
-    const ghH = groundAt(hx, hz)
-    const bw = 10 + rng() * 12, bd = 10 + rng() * 12, wh = 8 + rng() * 5, wt = 1.5, dw = 2.5, dh = 5.0
-    function hbox(dx: number, dy: number, dz: number, w: number, h: number, d: number) {
-      if (dy - h / 2 <= 0.6) {
-        boxes.push({ x: hx + dx, y: dy + ghH - 0.75, z: hz + dz, w, h: h + 1.5, d, type: 'rand_building', biome })
-      } else {
-        boxes.push({ x: hx + dx, y: dy + ghH, z: hz + dz, w, h, d, type: 'rand_building', biome })
-      }
-    }
-    function wallFace(dir: string, facePos: number, span: number) {
-      const dox = (rng() - 0.5) * (span - dw - 2)
-      const lw = span + dox - dw, rw = span - dox - dw
-      const lc = -span + lw / 2, rc = dox + dw + rw / 2
-      function panel(sc: number, fp: number, pw: number) {
-        const hasWin = rng() < 0.65 && pw > 4.5
-        if (hasWin) {
-          const ww = Math.min(2.5, pw - 1.5), sill = 2.2, winTop = 4.2, side = (pw - ww) / 2
-          if (dir === 'z') {
-            hbox(sc - ww / 2 - side / 2, wh / 2, fp, side, wh, wt)
-            hbox(sc + ww / 2 + side / 2, wh / 2, fp, side, wh, wt)
-            hbox(sc, sill / 2, fp, ww, sill, wt)
-            hbox(sc, winTop + (wh - winTop) / 2, fp, ww, wh - winTop, wt)
-          } else {
-            hbox(fp, wh / 2, sc - ww / 2 - side / 2, wt, wh, side)
-            hbox(fp, wh / 2, sc + ww / 2 + side / 2, wt, wh, side)
-            hbox(fp, sill / 2, sc, wt, sill, ww)
-            hbox(fp, winTop + (wh - winTop) / 2, sc, wt, wh - winTop, ww)
-          }
-        } else {
-          if (dir === 'z') hbox(sc, wh / 2, fp, pw, wh, wt)
-          else hbox(fp, wh / 2, sc, wt, wh, pw)
-        }
-      }
-      if (lw > 0.5) panel(lc, facePos, lw)
-      if (rw > 0.5) panel(rc, facePos, rw)
-      if (wh > dh + 0.3) {
-        if (dir === 'z') hbox(dox, dh + (wh - dh) / 2, facePos, dw * 2, wh - dh, wt)
-        else hbox(facePos, dh + (wh - dh) / 2, dox, wt, wh - dh, dw * 2)
-      }
-    }
-    wallFace('z', -(bd + wt / 2), bw + wt)
-    wallFace('z', (bd + wt / 2), bw + wt)
-    wallFace('x', -(bw + wt / 2), bd)
-    wallFace('x', (bw + wt / 2), bd)
-    if (rng() < 0.6) boxes.push({ x: hx, y: wh + 0.5 + ghH, z: hz, w: (bw + wt) * 2, h: 1, d: (bd + wt) * 2, type: 'platform', biome })
-    if (rng() < 0.5) boxes.push({ x: hx, y: 1 + ghH - 0.75, z: hz, w: 2 + rng() * 3, h: 3.5, d: 2 + rng() * 3, type: 'cover', biome })
-    spawns.push({ x: hx, y: spawnY(hx, hz), z: hz })
-  }
-
-  const HIDEOUT_COUNT = 10 + Math.floor(rng() * 11)
-  for (let attempt = 0, placed = 0; attempt < 300 && placed < HIDEOUT_COUNT; attempt++) {
-    const hx = (rng() - 0.5) * (SIZE - 80), hz = (rng() - 0.5) * (SIZE - 80)
-    if (hx * hx + hz * hz < 110 * 110) continue
-    const biome = hx > 5 ? 'terra' : hx < -5 ? 'barren' : 'neutral'
-    buildHideout(hx, hz, biome)
-    placed++
-  }
-
-  // Spawns around cover
-  const coverPool = boxes.filter(b => b.type === 'cover' || b.type === 'ruins')
-  for (let i = 0; i < Math.min(30, coverPool.length); i++) {
-    const b = coverPool[i]
-    spawns.push({ x: b.x + 3, y: spawnY(b.x + 3, b.z + 3), z: b.z + 3 })
-  }
-
-  // Canonical outpost & central plaza spawns (open daylight locations prioritized at front)
-  const openAirSpawns = [
-    [0, 50], [0, -50], [50, 0], [-50, 0],
-    [180, 300], [-180, 300], [180, -300], [-180, -300],
-    [330, 330], [-330, 330], [330, -330], [-330, -330],
-    [360, 0], [-360, 0], [0, 360], [0, -360]
+  // ══ STATIC OUTER ARENA (replaces procedural scatter) ══
+  // Four quadrant outposts — U-shaped compounds open toward center.
+  // Each: back wall + 2 side walls + center crate. Biomes alternate
+  // for terra/barren material variety.
+  const OUTPOSTS = [
+    { cx: 55, cz: 55, biome: 'terra', name: 'Relay Outpost' },
+    { cx: -55, cz: 55, biome: 'barren', name: 'Quarry Outpost' },
+    { cx: 55, cz: -55, biome: 'terra', name: 'Garden Outpost' },
+    { cx: -55, cz: -55, biome: 'barren', name: 'Docks Outpost' }
   ] as const
-  for (const [x, z] of openAirSpawns) {
-    spawns.unshift({ x, y: spawnY(x, z), z })
+  for (const o of OUTPOSTS) {
+    // Back wall (faces away from center)
+    const sx = Math.sign(o.cx), sz = Math.sign(o.cz)
+    box(o.cx, 3, o.cz + sz * 6, 15, 6, 1.5, 'building', o.biome)
+    // Side walls
+    box(o.cx - sx * 7, 3, o.cz, 1.5, 6, 12, 'building', o.biome)
+    box(o.cx + sx * 7, 3, o.cz, 1.5, 6, 12, 'building', o.biome)
+    // Center crate + flanking low cover
+    box(o.cx, 1, o.cz, 3.5, 2, 3.5, 'cover', o.biome)
+    box(o.cx - sx * 4, 0.7, o.cz - sz * 3, 2.5, 1.4, 2.5, 'cover', o.biome)
+    box(o.cx + sx * 4, 0.7, o.cz - sz * 3, 2.5, 1.4, 2.5, 'cover', o.biome)
+    // Overlook platform on the back wall
+    box(o.cx, 6.6, o.cz + sz * 6, 15, 0.6, 3, 'platform', o.biome)
   }
 
-  // Procedurally scatter random terrain spawns across the entire 750x750 map
-  for (let attempt = 0, placed = 0; attempt < 400 && placed < 120; attempt++) {
-    const rx = Math.round((rng() - 0.5) * (SIZE - 80))
-    const rz = Math.round((rng() - 0.5) * (SIZE - 80))
-    // Keep clear of central plaza hub building (20x15)
-    if (Math.abs(rx) < 18 && Math.abs(rz) < 15) continue
-    // Check clearance against structures and cover boxes
-    const blocked = boxes.some(b =>
-      Math.abs(rx - b.x) < b.w / 2 + 1.5 && Math.abs(rz - b.z) < b.d / 2 + 1.5
-    )
-    if (!blocked) {
-      spawns.push({ x: rx, y: spawnY(rx, rz), z: rz })
-      placed++
-    }
+  // Avenue gates at (0,±80) — side pylons + split center block (gate gap).
+  for (const sz of [1, -1]) {
+    const gz = sz * 80
+    const biome = sz > 0 ? 'terra' : 'barren'
+    box(-5.5, 4, gz, 3, 8, 3, 'pillar', biome)
+    box(5.5, 4, gz, 3, 8, 3, 'pillar', biome)
+    box(-9, 1.25, gz, 5, 2.5, 4, 'cover', biome)
+    box(9, 1.25, gz, 5, 2.5, 4, 'cover', biome)
+    box(0, 8.6, gz, 14, 0.6, 4, 'platform', biome)
   }
 
-  return {
-    floor: { w: SIZE, d: SIZE },
-    boxes,
-    spawns,
-    pois: [],
-    seed
+  // Ridge gates at (±80,0) — mirrored, rotated 90°.
+  for (const sx of [1, -1]) {
+    const gx = sx * 80
+    const biome = sx > 0 ? 'terra' : 'barren'
+    box(gx, 4, -5.5, 3, 8, 3, 'pillar', biome)
+    box(gx, 4, 5.5, 3, 8, 3, 'pillar', biome)
+    box(gx, 1.25, -9, 4, 2.5, 5, 'cover', biome)
+    box(gx, 1.25, 9, 4, 2.5, 5, 'cover', biome)
+    box(gx, 8.6, 0, 4, 0.6, 14, 'platform', biome)
   }
+
+  // Corner sniper nests (±95,±95) — pillar + high platform (jump-pad access).
+  quad(95, 6, 95, 2.5, 12, 2.5, 'pillar', 'neutral')
+  quad(95, 12.3, 95, 10, 0.6, 10, 'platform', 'neutral')
+  quad(95, 13.3, 91.5, 10, 1.4, 0.4, 'cover', 'neutral')
+
+  // Diagonal lane covers — mirrored crates breaking up long sightlines.
+  // Kept ≥4m clear of every jump-pad node and spawn point.
+  quad(35, 1, 48, 4, 2, 3, 'cover', 'terra')
+  quad(48, 1, 35, 3, 2, 4, 'cover', 'terra')
+  quad(35, 1, -48, 4, 2, 3, 'cover', 'barren')
+  quad(48, 1, -35, 3, 2, 4, 'cover', 'barren')
+  quad(70, 0.9, 20, 3, 1.8, 3, 'cover', 'neutral')
+  quad(20, 0.9, 70, 3, 1.8, 3, 'cover', 'neutral')
+  quad(70, 0.9, -20, 3, 1.8, 3, 'cover', 'neutral')
+  quad(20, 0.9, -70, 3, 1.8, 3, 'cover', 'neutral')
+
+  // ── Balanced fixed spawns (16, mirrored, hand-cleared) ───
+  const SPAWN_Y = 1.6
+  const spawnList: Array<[number, number]> = [
+    [0, 95], [0, -95],
+    [0, 65], [0, -65],
+    [95, 0], [-95, 0],
+    [62, 0], [-62, 0],
+    [35, 35], [-35, 35],
+    [35, -35], [-35, -35],
+    [88, 88], [-88, 88],
+    [88, -88], [-88, -88]
+  ]
+  for (const [x, z] of spawnList) {
+    spawns.push({ x, y: SPAWN_Y, z })
+  }
+
+  const pois: Poi[] = [
+    { name: 'Meridian Hub', x: 0, z: 0 },
+    { name: 'Fountain Plaza', x: 0, z: 17 },
+    { name: 'North Gate', x: 0, z: 80 },
+    { name: 'South Gate', x: 0, z: -80 },
+    { name: 'East Ridge', x: 80, z: 0 },
+    { name: 'West Ridge', x: -80, z: 0 },
+    { name: 'Relay Outpost', x: 55, z: 55 },
+    { name: 'Quarry Outpost', x: -55, z: 55 },
+    { name: 'Garden Outpost', x: 55, z: -55 },
+    { name: 'Docks Outpost', x: -55, z: -55 },
+    { name: 'NE Nest', x: 95, z: 95 },
+    { name: 'NW Nest', x: -95, z: 95 },
+    { name: 'SE Nest', x: 95, z: -95 },
+    { name: 'SW Nest', x: -95, z: -95 }
+  ]
+
+  return { floor: { w: SIZE, d: SIZE }, boxes, spawns, pois, seed: STATIC_MAP_SEED }
+}
+
+/**
+ * Deterministic entry point. The seed argument is ignored (kept so callers
+ * like GameEngine / PeerJSHost don't change) — everyone gets Meridian Prime.
+ */
+export function generateMap(_seed?: number): MapData {
+  return getStaticMap()
 }
