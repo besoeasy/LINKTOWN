@@ -30,16 +30,34 @@ export interface MapData {
 }
 
 /**
- * MERIDIAN PRIME — static competitive arena (v1).
+ * MERIDIAN PRIME — static competitive arena (v2).
  *
- * Replaces the old seeded scatter generator. One frozen, hand-balanced map
- * so players learn angles, callouts and jump-pad routes (Apex/Farlight style).
- * Playable area is 240x240, fully flat (y=0) — no rolling terrain.
+ * One frozen, hand-balanced map so players learn angles, callouts and
+ * jump-pad routes (Apex/Farlight style). Playable area is 300x300, ground
+ * stays flat (y=0) — height gameplay comes from climbable mesas, overlook
+ * decks and an elevated maglev freight line (no terrain deformation, so
+ * bots, physics and hitscan all stay exact).
  */
-export const STATIC_MAP_ID = 'meridian-prime-v1'
+export const STATIC_MAP_ID = 'meridian-prime-v2'
 /** Kept on MapData / welcome protocol so old clients stay compatible. */
 export const STATIC_MAP_SEED = 3049
-export const MAP_SIZE = 240
+export const MAP_SIZE = 300
+
+/**
+ * Elevated maglev cargo line. Shared by map (guideway statics) and scene
+ * (animated cars). Motion is a pure function of match elapsed time so host
+ * and P2P clients render the identical train with zero network traffic.
+ */
+export const MAGLEV = {
+  z: -100,          // guideway centerline (runs full width along x)
+  railY: 7,         // rail deck height — players fight underneath freely
+  trainY: 8.6,      // car floor height
+  speed: 12,        // units/sec
+  span: 380,        // loop length (pops beyond the walls, inside fog)
+  cars: 6,          // 1 loco + 5 open flatcars
+  carLen: 8,
+  carGap: 10
+} as const
 
 /** Flat arena — pure constant so mesh, physics and spawns always agree. */
 export function groundHeight(_x: number, _z: number, _seed?: number): number {
@@ -230,6 +248,35 @@ export function getStaticMap(): MapData {
   quad(95, 12.3, 95, 10, 0.6, 10, 'platform', 'neutral')
   quad(95, 13.3, 91.5, 10, 1.4, 0.4, 'cover', 'neutral')
 
+  // ── Mesa mounds (stepped rock, climbable by jumping tier to tier) ──
+  // Tier tops at y=2 / 4 / 5.5. Rock texture reads as natural height.
+  const MESAS = [
+    { x: 48, z: 78, biome: 'terra', name: 'Ember Mesa' },
+    { x: -48, z: -78, biome: 'barren', name: 'Ash Mesa' },
+    { x: 78, z: -48, biome: 'terra', name: 'Cinder Mesa' },
+    { x: -78, z: 48, biome: 'barren', name: 'Slate Mesa' }
+  ] as const
+  for (const m of MESAS) {
+    box(m.x, 1, m.z, 18, 2, 18, 'cover', m.biome)
+    box(m.x, 3, m.z, 12, 2, 12, 'cover', m.biome)
+    box(m.x, 4.75, m.z, 7, 1.5, 7, 'cover', m.biome)
+  }
+
+  // ── Overlook decks (jump-up sniper perches, deck top y=4.2) ──
+  const DECKS = [[20, 40], [-20, 40], [20, -40], [-20, -40]] as const
+  for (const [dx, dz] of DECKS) {
+    box(dx, 1, dz, 4, 2, 4, 'cover', 'neutral')
+    box(dx, 4.0, dz, 6, 0.4, 6, 'platform', 'neutral')
+  }
+
+  // ── Maglev guideway (statics; cars are animated by the scene) ──
+  // Twin rails at y=7 plus a pylon every 20m (doubles as lane cover).
+  box(0, MAGLEV.railY, MAGLEV.z - 1.2, MAP_SIZE, 0.5, 0.6, 'platform', 'neutral')
+  box(0, MAGLEV.railY, MAGLEV.z + 1.2, MAP_SIZE, 0.5, 0.6, 'platform', 'neutral')
+  for (let px = -140; px <= 140; px += 20) {
+    box(px, 3.5, MAGLEV.z, 3, 7, 3, 'pillar', 'neutral')
+  }
+
   // Diagonal lane covers — mirrored crates breaking up long sightlines.
   // Kept ≥4m clear of every jump-pad node and spawn point.
   quad(35, 1, 48, 4, 2, 3, 'cover', 'terra')
@@ -241,7 +288,13 @@ export function getStaticMap(): MapData {
   quad(70, 0.9, -20, 3, 1.8, 3, 'cover', 'neutral')
   quad(20, 0.9, -70, 3, 1.8, 3, 'cover', 'neutral')
 
-  // ── Balanced fixed spawns (16, mirrored, hand-cleared) ───
+  // Far-strip lane covers for the expanded 300m arena.
+  quad(35, 1, 120, 4, 2, 3, 'cover', 'terra')
+  quad(90, 1, 120, 3, 2, 4, 'cover', 'terra')
+  quad(35, 1, -120, 4, 2, 3, 'cover', 'barren')
+  quad(90, 1, -120, 3, 2, 4, 'cover', 'barren')
+
+  // ── Balanced fixed spawns (20, mirrored, hand-cleared) ───
   const SPAWN_Y = 1.6
   const spawnList: Array<[number, number]> = [
     [0, 95], [0, -95],
@@ -251,7 +304,9 @@ export function getStaticMap(): MapData {
     [35, 35], [-35, 35],
     [35, -35], [-35, -35],
     [88, 88], [-88, 88],
-    [88, -88], [-88, -88]
+    [88, -88], [-88, -88],
+    [0, 130], [0, -130],
+    [65, 125], [-65, -125]
   ]
   for (const [x, z] of spawnList) {
     spawns.push({ x, y: SPAWN_Y, z })
@@ -271,7 +326,12 @@ export function getStaticMap(): MapData {
     { name: 'NE Nest', x: 95, z: 95 },
     { name: 'NW Nest', x: -95, z: 95 },
     { name: 'SE Nest', x: 95, z: -95 },
-    { name: 'SW Nest', x: -95, z: -95 }
+    { name: 'SW Nest', x: -95, z: -95 },
+    { name: 'Maglev Line', x: 0, z: -100 },
+    { name: 'Ember Mesa', x: 48, z: 78 },
+    { name: 'Ash Mesa', x: -48, z: -78 },
+    { name: 'Cinder Mesa', x: 78, z: -48 },
+    { name: 'Slate Mesa', x: -78, z: 48 }
   ]
 
   return { floor: { w: SIZE, d: SIZE }, boxes, spawns, pois, seed: STATIC_MAP_SEED }

@@ -6,7 +6,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import type { MapData, Box } from './map'
-import { groundHeight } from './map'
+import { groundHeight, MAGLEV } from './map'
 import type { PlayerState, NaniteCache, JumpPad } from '../net/types'
 import { CFG, CORE_DETAILS } from './config'
 import { sound } from './audio'
@@ -922,6 +922,8 @@ export class SceneRenderer {
   private courtyardShrine?: THREE.Group
   private towerBeaconMesh?: THREE.Mesh
   private boreasPlanet?: THREE.Mesh
+  private maglevTrain?: THREE.Group
+  private maglevCars: THREE.Group[] = []
   private composer!: EffectComposer
   private bloomPass!: UnrealBloomPass
 
@@ -1318,18 +1320,18 @@ export class SceneRenderer {
     const hemi = new THREE.HemisphereLight(0xe8f4ff, 0x889966, 1.1)
     this.scene.add(hemi)
 
-    // Direct warm sun with crisp soft shadows. Frustum fits the 240m arena
-    // (±160 with margin) so the 2048 shadow map stays sharp.
+    // Direct warm sun with crisp soft shadows. Frustum fits the 300m arena
+    // (±200 with margin) so the 2048 shadow map stays sharp.
     const sun = new THREE.DirectionalLight(0xfffaed, 2.4)
     sun.position.set(170, 95, 55)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
     sun.shadow.camera.near = 1
     sun.shadow.camera.far = 1200
-    sun.shadow.camera.left = -160
-    sun.shadow.camera.right = 160
-    sun.shadow.camera.top = 160
-    sun.shadow.camera.bottom = -160
+    sun.shadow.camera.left = -200
+    sun.shadow.camera.right = 200
+    sun.shadow.camera.top = 200
+    sun.shadow.camera.bottom = -200
     sun.shadow.bias = -0.00005
     sun.shadow.normalBias = 0.03
     this.scene.add(sun)
@@ -1807,6 +1809,51 @@ export class SceneRenderer {
     // No dynamic light: pyramid + rings + heart are emissive, shrine reads
     // lit without a per-frame PointLight cost.
     this.scene.add(this.courtyardShrine)
+
+    this.buildMaglevTrain()
+  }
+
+  /**
+   * Open-bed maglev freight consist on the elevated guideway (map statics).
+   * Cars are positioned every frame in render() as a pure function of match
+   * elapsed time — deterministic across host and P2P clients, no netcode.
+   */
+  private buildMaglevTrain() {
+    const train = new THREE.Group()
+    const deckMat = new THREE.MeshStandardMaterial({ color: 0x161d26, roughness: 0.4, metalness: 0.85 })
+    const cargoMat = new THREE.MeshStandardMaterial({ color: 0x3a4659, roughness: 0.55, metalness: 0.6 })
+    const locoMat = new THREE.MeshStandardMaterial({ color: 0x222b38, roughness: 0.3, metalness: 0.9 })
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff })
+
+    for (let i = 0; i < MAGLEV.cars; i++) {
+      const car = new THREE.Group()
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(MAGLEV.carLen, 0.8, 3), deckMat)
+      car.add(deck)
+      if (i === 0) {
+        // Locomotive cab
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(3.2, 2.4, 2.8), locoMat)
+        cab.position.set(-1.6, 1.6, 0)
+        car.add(cab)
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(MAGLEV.carLen + 0.1, 0.25, 3.1), glowMat)
+        stripe.position.y = -0.1
+        car.add(stripe)
+      } else {
+        // Open flatcar: two cargo crates + guide glow strip
+        for (const cx of [-1.8, 1.8]) {
+          const crate = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 2.6), cargoMat)
+          crate.position.set(cx, 1.4, 0)
+          car.add(crate)
+        }
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(MAGLEV.carLen + 0.1, 0.2, 3.1), glowMat)
+        stripe.position.y = -0.2
+        car.add(stripe)
+      }
+      car.position.set(0, MAGLEV.trainY, MAGLEV.z)
+      train.add(car)
+      this.maglevCars.push(car)
+    }
+    this.maglevTrain = train
+    this.scene.add(train)
   }
 
   updatePlayers(players: PlayerState[], localPlayerId: number) {
@@ -2756,7 +2803,7 @@ export class SceneRenderer {
     }
   }
 
-  render(dt: number, isMoving = false, superActive = false, shieldActive = false, crouching = false) {
+  render(dt: number, isMoving = false, superActive = false, shieldActive = false, crouching = false, matchTime: number = CFG.MATCH_DURATION) {
     for (const c of this.clouds) {
       c.position.x += (c.userData as any).driftX * dt * 4
       c.position.z += (c.userData as any).driftZ * dt * 4
@@ -2940,6 +2987,16 @@ export class SceneRenderer {
       }
     }
 
+    // Maglev freight: head position loops across the span as a pure
+    // function of match elapsed time (host + clients stay in sync).
+    if (this.maglevCars.length > 0) {
+      const elapsed = CFG.MATCH_DURATION - matchTime
+      const headX = -MAGLEV.span / 2 + ((elapsed * MAGLEV.speed) % MAGLEV.span)
+      for (let i = 0; i < this.maglevCars.length; i++) {
+        this.maglevCars[i].position.x = headX - i * MAGLEV.carGap
+      }
+    }
+
     this.composer.render()
   }
 
@@ -2955,6 +3012,16 @@ export class SceneRenderer {
       this.scene.remove(s.mesh)
     }
     this.sparks = []
+    if (this.maglevTrain) {
+      this.scene.remove(this.maglevTrain)
+      this.maglevTrain.traverse((obj) => {
+        if (obj instanceof THREE.Mesh) {
+          obj.geometry?.dispose()
+        }
+      })
+      this.maglevTrain = undefined
+      this.maglevCars = []
+    }
     // Dispose remote-player meshes (geometries/materials/textures), otherwise
     // every rematch leaks GPU memory — renderer.dispose() alone does not free those.
     for (const [, grp] of this.playerMeshes) {

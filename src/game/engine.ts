@@ -1225,7 +1225,7 @@ export class GameEngine {
     const isMoving = this.localPlayer.alive && (!!this.keys['w'] || !!this.keys['s'] || !!this.keys['a'] || !!this.keys['d'])
     // Dead shells drop the first-person arm — the chassis is gone.
     this.scene.setViewmodelVisible(this.localPlayer.alive)
-    this.scene.render(dt, isMoving, this.localPlayer.superActive, this.localPlayer.shieldActive, this.localPlayer.crouching)
+    this.scene.render(dt, isMoving, this.localPlayer.superActive, this.localPlayer.shieldActive, this.localPlayer.crouching, this.matchTime)
 
     // Calculate rolling FPS
     this.frameCount++
