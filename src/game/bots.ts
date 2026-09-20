@@ -102,8 +102,8 @@ export function tickBots(
       const dz = nearestCache.z - bot.z
       const desiredYaw = Math.atan2(-dx, -dz)
       bot.yaw += (desiredYaw - bot.yaw) * 0.25
-      const mx = -Math.sin(bot.yaw) * CFG.PLAYER_SPEED * 0.9 * dt
-      const mz = -Math.cos(bot.yaw) * CFG.PLAYER_SPEED * 0.9 * dt
+      const mx = -Math.sin(bot.yaw) * CFG.RUN_SPEED * 0.9 * dt
+      const mz = -Math.cos(bot.yaw) * CFG.RUN_SPEED * 0.9 * dt
       const col = resolveCollision(bot.x + mx, bot.y, bot.z + mz, map, nearby)
       bot.x = col.x
       bot.z = col.z
@@ -116,14 +116,14 @@ export function tickBots(
 
       // Move toward or strafe
       if (minDist > 12) {
-        const mx = -Math.sin(bot.yaw) * CFG.PLAYER_SPEED * 0.8 * dt
-        const mz = -Math.cos(bot.yaw) * CFG.PLAYER_SPEED * 0.8 * dt
+        const mx = -Math.sin(bot.yaw) * CFG.RUN_SPEED * 0.8 * dt
+        const mz = -Math.cos(bot.yaw) * CFG.RUN_SPEED * 0.8 * dt
         const col = resolveCollision(bot.x + mx, bot.y, bot.z + mz, map, nearby)
         bot.x = col.x
         bot.z = col.z
       } else {
         // Strafe
-        const strafe = (Math.sin(now * 0.003 + bot.id) > 0 ? 1 : -1) * CFG.PLAYER_SPEED * 0.6 * dt
+        const strafe = (Math.sin(now * 0.003 + bot.id) > 0 ? 1 : -1) * CFG.RUN_SPEED * 0.6 * dt
         const mx = Math.cos(bot.yaw) * strafe
         const mz = -Math.sin(bot.yaw) * strafe
         const col = resolveCollision(bot.x + mx, bot.y, bot.z + mz, map, nearby)
@@ -141,8 +141,8 @@ export function tickBots(
       const dz = nearestCache.z - bot.z
       const desiredYaw = Math.atan2(-dx, -dz)
       bot.yaw += (desiredYaw - bot.yaw) * 0.15
-      const mx = -Math.sin(bot.yaw) * CFG.PLAYER_SPEED * 0.6 * dt
-      const mz = -Math.cos(bot.yaw) * CFG.PLAYER_SPEED * 0.6 * dt
+      const mx = -Math.sin(bot.yaw) * CFG.RUN_SPEED * 0.6 * dt
+      const mz = -Math.cos(bot.yaw) * CFG.RUN_SPEED * 0.6 * dt
       const col = resolveCollision(bot.x + mx, bot.y, bot.z + mz, map, nearby)
       bot.x = col.x
       bot.z = col.z

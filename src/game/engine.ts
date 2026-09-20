@@ -1106,10 +1106,9 @@ export class GameEngine {
       }
 
       const len = Math.hypot(mx, mz)
-      const isRunning = this.keys['shift']
-      let speed = isRunning
-        ? CFG.RUN_SPEED
-        : CFG.PLAYER_SPEED
+      // RX-11 always runs — no sprint key. Shift is free for jump modifiers.
+      const isRunning = true
+      let speed = CFG.RUN_SPEED
 
       if (this.localPlayer.superActive) {
         speed *= 2.0
@@ -1397,7 +1396,7 @@ export class GameEngine {
         if (msg.right) { mx += Math.sin(p.yaw + Math.PI / 2); mz += Math.cos(p.yaw + Math.PI / 2) }
         const len = Math.hypot(mx, mz)
         if (len > 0) {
-          let speed = msg.run ? CFG.RUN_SPEED : CFG.PLAYER_SPEED
+          let speed = CFG.RUN_SPEED
           if (p.superActive) {
             speed *= 2.0
           }
