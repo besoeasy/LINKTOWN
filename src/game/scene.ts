@@ -1304,9 +1304,9 @@ export class SceneRenderer {
 
     const skyU = sky.material.uniforms as any
     skyU['turbidity'].value = 2.5
-    skyU['rayleigh'].value = 0.9
-    skyU['mieCoefficient'].value = 0.005
-    skyU['mieDirectionalG'].value = 0.8
+    skyU['rayleigh'].value = 0.7
+    skyU['mieCoefficient'].value = 0.002
+    skyU['mieDirectionalG'].value = 0.65
 
     // Sun direction aligned with primary sun directional light (high clear daylight angle)
     const sunPos = new THREE.Vector3(120, 220, 80).normalize()
