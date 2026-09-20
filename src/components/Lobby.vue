@@ -138,7 +138,7 @@ const handleJoinInput = () => {
               <li><kbd>Q</kbd> Core ability</li>
               <li><kbd>E</kbd> Super (−50 hull)</li>
               <li><kbd>R</kbd> Shield (−80 hull)</li>
-              <li><kbd>Space</kbd> Jump (hold <kbd>Shift</kbd> for super jump)</li>
+              <li><kbd>Space</kbd> Jump</li>
               <li><kbd>C</kbd> Crouch</li>
               <li><kbd>Tab</kbd> / <kbd>F</kbd> Scoreboard</li>
             </ul>

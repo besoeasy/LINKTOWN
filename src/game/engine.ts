@@ -411,20 +411,10 @@ export class GameEngine {
     const onGround = this.isOnGround(this.localPlayer)
     if (!onGround) return
 
-    // Check super jump
-    if (this.keys['shift'] && this.localPlayer.health > CFG.SUPER_JUMP_COST) {
-      this.localPlayer.health -= CFG.SUPER_JUMP_COST
-      this.markHullSpent(this.localPlayer)
-      this.vy = CFG.SUPER_JUMP_SPEED
-      sound.playSuperJump()
-      if (this.mode === 'client') {
-        this.client?.send({ type: 'jump_super' })
-      }
-    } else {
-      this.vy = CFG.JUMP_SPEED
-      if (this.mode === 'client') {
-        this.client?.send({ type: 'jump' })
-      }
+    // Single jump — no modifiers. Verticality comes from jump pads.
+    this.vy = CFG.JUMP_SPEED
+    if (this.mode === 'client') {
+      this.client?.send({ type: 'jump' })
     }
   }
 
@@ -1106,7 +1096,7 @@ export class GameEngine {
       }
 
       const len = Math.hypot(mx, mz)
-      // RX-11 always runs — no sprint key. Shift is free for jump modifiers.
+      // RX-11 always runs — no sprint key, no modifiers.
       const isRunning = true
       let speed = CFG.RUN_SPEED
 
