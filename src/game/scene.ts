@@ -104,6 +104,14 @@ function createNameplateTexture(name: string, isBot = false): THREE.CanvasTextur
   return texture
 }
 
+/** Reuse a color canvas as a linear height field for inexpensive PBR relief. */
+function createBumpTexture(source: THREE.CanvasTexture): THREE.CanvasTexture {
+  const bump = source.clone()
+  bump.colorSpace = THREE.NoColorSpace
+  bump.needsUpdate = true
+  return bump
+}
+
 /** Procedural grayscale hexagonal nanite mesh + granular soil micro-texture for ground plane */
 function createTerrainDetailTexture(): THREE.CanvasTexture {
   const canvas = document.createElement('canvas')
@@ -967,6 +975,7 @@ export class SceneRenderer {
 
   // Environmental graphics & animated elements
   private waterTexture?: THREE.CanvasTexture
+  private waterBumpTexture?: THREE.CanvasTexture
   private holoMaterials: THREE.MeshBasicMaterial[] = []
   private courtyardShrine?: THREE.Group
   private towerBeaconMesh?: THREE.Mesh
@@ -1537,11 +1546,18 @@ export class SceneRenderer {
     gGeo.setAttribute('color', new THREE.Float32BufferAttribute(gColors, 3))
     gGeo.computeVertexNormals()
 
-    // High-resolution nanite lattice detail multiplied over biome vertex colors
+    // High-resolution nanite lattice detail multiplied over biome vertex colors.
+    // The grayscale field also drives a restrained bump response for close-up relief.
     const groundDetailTex = createTerrainDetailTexture()
+    const groundBumpTex = createBumpTexture(groundDetailTex)
+    const maxAnisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy())
+    groundDetailTex.anisotropy = maxAnisotropy
+    groundBumpTex.anisotropy = maxAnisotropy
     const groundMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       map: groundDetailTex,
+      bumpMap: groundBumpTex,
+      bumpScale: 0.12,
       roughness: 0.90,
       metalness: 0.04
     })
@@ -1551,13 +1567,23 @@ export class SceneRenderer {
 
     // 2. Animated water ponds with engineered containment rims & corner beacons
     this.waterTexture = createWaterTexture()
-    const waterMat = new THREE.MeshStandardMaterial({
-      color: 0x1490d8,
+    this.waterBumpTexture = createBumpTexture(this.waterTexture)
+    this.waterBumpTexture.repeat.set(3, 3)
+    const waterMat = new THREE.MeshPhysicalMaterial({
+      color: 0x0b789f,
       map: this.waterTexture,
-      roughness: 0.08,
-      metalness: 0.72,
+      bumpMap: this.waterBumpTexture,
+      bumpScale: 0.08,
+      roughness: 0.12,
+      metalness: 0.04,
+      transmission: 0.12,
+      thickness: 0.35,
+      ior: 1.333,
+      clearcoat: 1,
+      clearcoatRoughness: 0.1,
       transparent: true,
-      opacity: 0.82
+      opacity: 0.88,
+      envMapIntensity: 1.15
     })
     const waterPonds = [
       [80, -75, 38, 26],
@@ -1652,34 +1678,58 @@ export class SceneRenderer {
     const texGarden = createGardenTexture()
     const texHazard = createHazardTexture()
 
+    const surfaceTextures = [
+      texConcrete, texDarkAlloy, texBarren, texTerra, texBlastDoor,
+      texWindows.map, texWindows.emissiveMap, texRoad, texGarden, texHazard
+    ]
+    for (const texture of surfaceTextures) texture.anisotropy = maxAnisotropy
+    const bumpConcrete = createBumpTexture(texConcrete)
+    const bumpDarkAlloy = createBumpTexture(texDarkAlloy)
+    const bumpBarren = createBumpTexture(texBarren)
+    const bumpTerra = createBumpTexture(texTerra)
+    const bumpBlastDoor = createBumpTexture(texBlastDoor)
+    const bumpWindows = createBumpTexture(texWindows.map)
+    const bumpRoad = createBumpTexture(texRoad)
+    const bumpGarden = createBumpTexture(texGarden)
+
     const materials: Record<string, THREE.Material> = {
-      wall: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.65, metalness: 0.35 }),
-      house_body: new THREE.MeshStandardMaterial({ map: texConcrete, roughness: 0.72, metalness: 0.08 }),
+      wall: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.055, roughness: 0.65, metalness: 0.35 }),
+      house_body: new THREE.MeshStandardMaterial({ map: texConcrete, bumpMap: bumpConcrete, bumpScale: 0.045, roughness: 0.72, metalness: 0.08 }),
       house_window: new THREE.MeshStandardMaterial({
         map: texWindows.map,
+        bumpMap: bumpWindows,
+        bumpScale: 0.025,
         emissiveMap: texWindows.emissiveMap,
         emissive: new THREE.Color(0xffffff),
         emissiveIntensity: 0.78,
         roughness: 0.12,
         metalness: 0.45
       }),
-      house_door: new THREE.MeshStandardMaterial({ map: texBlastDoor, roughness: 0.45, metalness: 0.55 }),
-      house_chimney: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.7, metalness: 0.3 }),
-      platform: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.68, metalness: 0.35 }),
-      garden: new THREE.MeshStandardMaterial({ map: texGarden, roughness: 0.75, metalness: 0.05 }),
-      fountain_base: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.55, metalness: 0.4 }),
+      house_door: new THREE.MeshStandardMaterial({ map: texBlastDoor, bumpMap: bumpBlastDoor, bumpScale: 0.06, roughness: 0.45, metalness: 0.55 }),
+      house_chimney: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.05, roughness: 0.7, metalness: 0.3 }),
+      platform: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.04, roughness: 0.68, metalness: 0.35 }),
+      garden: new THREE.MeshStandardMaterial({ map: texGarden, bumpMap: bumpGarden, bumpScale: 0.07, roughness: 0.75, metalness: 0.05 }),
+      fountain_base: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.05, roughness: 0.55, metalness: 0.4 }),
       fountain_rim: new THREE.MeshStandardMaterial({
         color: 0x00f0ff,
         roughness: 0.3,
         emissive: 0x0099bb,
         emissiveIntensity: 0.65
       }),
-      fountain_pillar: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.5, metalness: 0.4 }),
-      bench: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.55, metalness: 0.45 }),
+      fountain_pillar: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.05, roughness: 0.5, metalness: 0.4 }),
+      bench: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.04, roughness: 0.55, metalness: 0.45 }),
       lamp_post: new THREE.MeshStandardMaterial({ color: 0x1e242c, roughness: 0.35, metalness: 0.85 }),
       lamp_head: new THREE.MeshStandardMaterial({ color: 0xfff088, emissive: 0xffdd44, emissiveIntensity: 2.0 }),
       bollard: new THREE.MeshStandardMaterial({ map: texHazard, roughness: 0.5, metalness: 0.25 }),
-      path: new THREE.MeshStandardMaterial({ map: texRoad, roughness: 0.88, metalness: 0.1 }),
+      path: new THREE.MeshPhysicalMaterial({
+        map: texRoad,
+        bumpMap: bumpRoad,
+        bumpScale: 0.1,
+        roughness: 0.76,
+        metalness: 0.08,
+        clearcoat: 0.32,
+        clearcoatRoughness: 0.34
+      }),
       road_marking: new THREE.MeshStandardMaterial({
         color: 0xffea00,
         emissive: 0x665500,
@@ -1688,21 +1738,21 @@ export class SceneRenderer {
       }),
 
       // Biome-specific cover & buildings
-      cover_terra: new THREE.MeshStandardMaterial({ map: texTerra, roughness: 0.75, metalness: 0.12 }),
-      cover_barren: new THREE.MeshStandardMaterial({ map: texBarren, roughness: 0.78, metalness: 0.12 }),
-      cover_neutral: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.65, metalness: 0.35 }),
+      cover_terra: new THREE.MeshStandardMaterial({ map: texTerra, bumpMap: bumpTerra, bumpScale: 0.055, roughness: 0.75, metalness: 0.12 }),
+      cover_barren: new THREE.MeshStandardMaterial({ map: texBarren, bumpMap: bumpBarren, bumpScale: 0.06, roughness: 0.78, metalness: 0.12 }),
+      cover_neutral: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.05, roughness: 0.65, metalness: 0.35 }),
 
-      building_terra: new THREE.MeshStandardMaterial({ map: texConcrete, roughness: 0.72, metalness: 0.08 }),
-      building_bar: new THREE.MeshStandardMaterial({ map: texBarren, roughness: 0.78, metalness: 0.12 }),
-      building_neutral: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.65, metalness: 0.35 }),
+      building_terra: new THREE.MeshStandardMaterial({ map: texConcrete, bumpMap: bumpConcrete, bumpScale: 0.045, roughness: 0.72, metalness: 0.08 }),
+      building_bar: new THREE.MeshStandardMaterial({ map: texBarren, bumpMap: bumpBarren, bumpScale: 0.055, roughness: 0.78, metalness: 0.12 }),
+      building_neutral: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.05, roughness: 0.65, metalness: 0.35 }),
 
-      rand_building: new THREE.MeshStandardMaterial({ map: texConcrete, roughness: 0.72, metalness: 0.08 }),
+      rand_building: new THREE.MeshStandardMaterial({ map: texConcrete, bumpMap: bumpConcrete, bumpScale: 0.045, roughness: 0.72, metalness: 0.08 }),
 
-      pillar_terra: new THREE.MeshStandardMaterial({ map: texTerra, roughness: 0.75, metalness: 0.12 }),
-      pillar_barren: new THREE.MeshStandardMaterial({ map: texBarren, roughness: 0.78, metalness: 0.12 }),
-      pillar_neutral: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.65, metalness: 0.35 }),
+      pillar_terra: new THREE.MeshStandardMaterial({ map: texTerra, bumpMap: bumpTerra, bumpScale: 0.055, roughness: 0.75, metalness: 0.12 }),
+      pillar_barren: new THREE.MeshStandardMaterial({ map: texBarren, bumpMap: bumpBarren, bumpScale: 0.06, roughness: 0.78, metalness: 0.12 }),
+      pillar_neutral: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.05, roughness: 0.65, metalness: 0.35 }),
 
-      default: new THREE.MeshStandardMaterial({ map: texDarkAlloy, roughness: 0.65, metalness: 0.35 })
+      default: new THREE.MeshStandardMaterial({ map: texDarkAlloy, bumpMap: bumpDarkAlloy, bumpScale: 0.05, roughness: 0.65, metalness: 0.35 })
     }
 
     const groups = new Map<string, Box[]>()
@@ -1723,6 +1773,7 @@ export class SceneRenderer {
 
     const unitBox = new THREE.BoxGeometry(1, 1, 1)
     const dummy = new THREE.Object3D()
+    const instanceTint = new THREE.Color()
 
     for (const [type, list] of groups) {
       const mat = materials[type]
@@ -1738,8 +1789,17 @@ export class SceneRenderer {
         dummy.rotation.set(0, 0, 0)
         dummy.updateMatrix()
         inst.setMatrixAt(i, dummy.matrix)
+
+        // Tiny deterministic tonal shifts break up repeated modules without
+        // changing the authored biome palette.
+        const seed = Math.abs(Math.round((b.x + 23.7) * 19 + (b.z - 11.2) * 31 + b.h * 7))
+        const value = 0.88 + (seed % 9) * 0.017
+        const warmth = ((seed % 7) - 3) * 0.006
+        instanceTint.setRGB(value + warmth, value, value - warmth * 0.55)
+        inst.setColorAt(i, instanceTint)
       }
       inst.instanceMatrix.needsUpdate = true
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true
       this.scene.add(inst)
     }
 
@@ -3044,6 +3104,10 @@ export class SceneRenderer {
       this.waterTexture.offset.x = (this.waterTexture.offset.x + dt * 0.02) % 1
       this.waterTexture.offset.y = (this.waterTexture.offset.y + dt * 0.015) % 1
     }
+    if (this.waterBumpTexture) {
+      this.waterBumpTexture.offset.x = (this.waterBumpTexture.offset.x + dt * 0.032) % 1
+      this.waterBumpTexture.offset.y = (this.waterBumpTexture.offset.y - dt * 0.021) % 1
+    }
 
     if (this.holoMaterials.length > 0) {
       const holoPulse = 0.84 + 0.16 * Math.sin(this.shieldTime * 2.8)
@@ -3130,6 +3194,8 @@ export class SceneRenderer {
     }
     this.clouds = []
     this.cloudTexture?.dispose()
+    this.waterTexture?.dispose()
+    this.waterBumpTexture?.dispose()
     // Dispose remote-player meshes (geometries/materials/textures), otherwise
     // every rematch leaks GPU memory — renderer.dispose() alone does not free those.
     for (const [, grp] of this.playerMeshes) {
