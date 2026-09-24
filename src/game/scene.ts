@@ -4,6 +4,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import type { MapData, Box } from './map'
 import { groundHeight } from './map'
@@ -933,7 +934,9 @@ export class SceneRenderer {
     phase: number
   }>()
   private composer!: EffectComposer
+  private gtaoPass!: GTAOPass
   private bloomPass!: UnrealBloomPass
+  private viewmodelFill!: THREE.PointLight
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene = new THREE.Scene()
@@ -951,7 +954,7 @@ export class SceneRenderer {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
-    this.renderer.toneMappingExposure = 1.1
+    this.renderer.toneMappingExposure = 0.95
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
 
     // Image-based lighting: neutral studio env for PBR reflections on
@@ -972,7 +975,24 @@ export class SceneRenderer {
     this.composer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
     this.composer.setSize(size.x, size.y)
     this.composer.addPass(new RenderPass(this.scene, this.camera))
-    this.bloomPass = new UnrealBloomPass(size, 0.35, 0.55, 1.0)
+
+    // Screen-space ground truth occlusion adds the contact darkening that a
+    // single directional shadow map cannot resolve under cover and between
+    // small props. Keep it world-scaled and denoised to avoid halo artifacts.
+    this.gtaoPass = new GTAOPass(this.scene, this.camera, size.x, size.y, {
+      radius: 0.72,
+      distanceExponent: 1,
+      thickness: 1,
+      scale: 1,
+      samples: 16,
+      screenSpaceRadius: false
+    })
+    this.gtaoPass.output = GTAOPass.OUTPUT.Default
+    this.gtaoPass.blendIntensity = 0.72
+    this.gtaoPass.pdSamples = 16
+    this.composer.addPass(this.gtaoPass)
+
+    this.bloomPass = new UnrealBloomPass(size, 0.32, 0.52, 1.05)
     this.composer.addPass(this.bloomPass)
     this.composer.addPass(new OutputPass())
 
@@ -981,8 +1001,12 @@ export class SceneRenderer {
     this.setupCosmos()
     this.setupClouds()
 
-    // Add camera to scene graph so camera children (robot arm, FP shield) render in camera space
+    // Add camera to scene graph so camera children (robot arm, FP shield) render in camera space.
+    // A short-range local bounce keeps the dark titanium readable without flattening world lighting.
     this.scene.add(this.camera)
+    this.viewmodelFill = new THREE.PointLight(0xd7e8ff, 0.85, 2.4, 2)
+    this.viewmodelFill.position.set(-0.18, 0.2, 0.08)
+    this.camera.add(this.viewmodelFill)
     this.setupRobotArm()
     this.setupFirstPersonShield()
 
@@ -1324,14 +1348,15 @@ export class SceneRenderer {
   }
 
   private setupLighting() {
-    // Sky / ground hemisphere light (soft daylight sky blue above, warm bounce ground below)
-    const hemi = new THREE.HemisphereLight(0xe8f4ff, 0x889966, 1.1)
+    // Natural hemisphere ratio: cool sky light with a restrained warm ground bounce.
+    const hemi = new THREE.HemisphereLight(0xdcecff, 0x566044, 0.58)
     this.scene.add(hemi)
 
-    // Direct warm sun with crisp soft shadows. Frustum fits the 300m arena
-    // (±200 with margin) so the 2048 shadow map stays sharp.
-    const sun = new THREE.DirectionalLight(0xfffaed, 2.4)
+    // One dominant warm sun preserves readable form and long directional shadows.
+    // The orthographic frustum fits the full 300m arena with a small margin.
+    const sun = new THREE.DirectionalLight(0xffe8bd, 3.1)
     sun.position.set(170, 95, 55)
+    sun.target.position.set(0, 0, 0)
     sun.castShadow = true
     sun.shadow.mapSize.set(2048, 2048)
     sun.shadow.camera.near = 1
@@ -1340,17 +1365,18 @@ export class SceneRenderer {
     sun.shadow.camera.right = 200
     sun.shadow.camera.top = 200
     sun.shadow.camera.bottom = -200
-    sun.shadow.bias = -0.00005
-    sun.shadow.normalBias = 0.03
-    this.scene.add(sun)
+    sun.shadow.bias = -0.00006
+    sun.shadow.normalBias = 0.025
+    sun.shadow.radius = 1.5
+    this.scene.add(sun, sun.target)
 
-    // Directional fill light from opposing angle (ensures building shadows remain clearly visible)
-    const fill = new THREE.DirectionalLight(0xa0c0e8, 0.8)
+    // Very light opposing fill approximates atmospheric skylight, not a studio key.
+    const fill = new THREE.DirectionalLight(0x9fbddd, 0.24)
     fill.position.set(-100, 80, -80)
     this.scene.add(fill)
 
-    // Ambient global illumination (ensures building interiors and covered areas are bright)
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8)
+    // Keep deep shade readable while allowing GTAO to supply the form definition.
+    const ambient = new THREE.AmbientLight(0xb9c9d8, 0.1)
     this.scene.add(ambient)
   }
 
@@ -3063,6 +3089,9 @@ export class SceneRenderer {
       })
     }
     this.playerMeshes.clear()
+    this.camera.remove(this.viewmodelFill)
+    this.gtaoPass.dispose()
+    this.bloomPass.dispose()
     this.composer.dispose()
     this.renderer.dispose()
   }
