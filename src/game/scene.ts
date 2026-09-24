@@ -855,12 +855,60 @@ function createBoreasRingTexture(): THREE.CanvasTexture {
   return tex
 }
 
+/** Feathered multi-lobe cloud sprite with a bright crown and cool underside. */
+function createSoftCloudTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 256
+  const ctx = canvas.getContext('2d')!
+
+  for (let i = 0; i < 34; i++) {
+    const t = i / 33
+    const x = 54 + t * 404 + (Math.random() - 0.5) * 34
+    const crown = 118 - Math.sin(t * Math.PI) * 32 + (Math.random() - 0.5) * 12
+    const y = crown + (Math.random() - 0.5) * 24
+    const rx = 28 + Math.random() * 43
+    const ry = 20 + Math.random() * 30
+
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.scale(1, ry / rx)
+    const puff = ctx.createRadialGradient(-rx * 0.18, -rx * 0.22, 1, 0, 0, rx)
+    puff.addColorStop(0, 'rgba(255, 255, 255, 0.92)')
+    puff.addColorStop(0.42, 'rgba(244, 249, 255, 0.72)')
+    puff.addColorStop(0.76, 'rgba(191, 210, 229, 0.30)')
+    puff.addColorStop(1, 'rgba(161, 184, 207, 0)')
+    ctx.fillStyle = puff
+    ctx.beginPath()
+    ctx.arc(0, 0, rx, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  // A faint cool shelf gives the lower edge volume without a hard cartoon line.
+  const shelf = ctx.createLinearGradient(0, 145, 0, 205)
+  shelf.addColorStop(0, 'rgba(196, 214, 232, 0)')
+  shelf.addColorStop(0.55, 'rgba(170, 194, 217, 0.20)')
+  shelf.addColorStop(1, 'rgba(150, 178, 204, 0)')
+  ctx.fillStyle = shelf
+  ctx.beginPath()
+  ctx.ellipse(256, 174, 205, 28, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  texture.minFilter = THREE.LinearMipmapLinearFilter
+  texture.generateMipmaps = true
+  return texture
+}
+
 export class SceneRenderer {
   public scene: THREE.Scene
   public camera: THREE.PerspectiveCamera
   public renderer: THREE.WebGLRenderer
   private playerMeshes = new Map<number, THREE.Group>()
-  private clouds: THREE.Mesh[] = []
+  private clouds: THREE.Sprite[] = []
+  private cloudTexture?: THREE.CanvasTexture
 
   // First-Person Robot Arm Viewmodel & Effects
   private robotArm!: THREE.Group
@@ -1429,25 +1477,26 @@ export class SceneRenderer {
   }
 
   private setupClouds() {
-    const palette = [0xffffff, 0xf4f4ff, 0xe8eff8]
-    for (let i = 0; i < 24; i++) {
-      const cw = 110 + Math.random() * 200
-      const ch = 25 + Math.random() * 55
-      const mat = new THREE.MeshLambertMaterial({
+    this.cloudTexture = createSoftCloudTexture()
+    const palette = [0xffffff, 0xf4f8ff, 0xe5edf7]
+    for (let i = 0; i < 20; i++) {
+      const cw = 190 + Math.random() * 210
+      const ch = cw * (0.27 + Math.random() * 0.1)
+      const mat = new THREE.SpriteMaterial({
+        map: this.cloudTexture,
         color: palette[Math.floor(Math.random() * palette.length)],
         transparent: true,
-        opacity: 0.25 + Math.random() * 0.25,
+        opacity: 0.62 + Math.random() * 0.22,
         depthWrite: false,
         fog: false
       })
-      const cloud = new THREE.Mesh(new THREE.PlaneGeometry(cw, ch), mat)
+      const cloud = new THREE.Sprite(mat)
       cloud.position.set(
-        (Math.random() - 0.5) * 850,
-        90 + Math.random() * 70,
-        (Math.random() - 0.5) * 850
+        (Math.random() - 0.5) * 900,
+        120 + Math.random() * 105,
+        (Math.random() - 0.5) * 900
       )
-      cloud.rotation.x = -Math.PI / 2
-      cloud.rotation.z = Math.random() * Math.PI
+      mat.rotation = (Math.random() - 0.5) * 0.08
       ;(cloud.userData as any).driftX = (0.5 + Math.random() * 1.5) * (Math.random() < 0.5 ? 1 : -1)
       ;(cloud.userData as any).driftZ = (0.3 + Math.random() * 0.8) * (Math.random() < 0.5 ? 1 : -1)
       this.scene.add(cloud)
@@ -3075,6 +3124,12 @@ export class SceneRenderer {
       this.scene.remove(s.mesh)
     }
     this.sparks = []
+    for (const cloud of this.clouds) {
+      this.scene.remove(cloud)
+      ;(cloud.material as THREE.SpriteMaterial).dispose()
+    }
+    this.clouds = []
+    this.cloudTexture?.dispose()
     // Dispose remote-player meshes (geometries/materials/textures), otherwise
     // every rematch leaks GPU memory — renderer.dispose() alone does not free those.
     for (const [, grp] of this.playerMeshes) {
